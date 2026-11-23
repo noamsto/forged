@@ -49,7 +49,7 @@ func newRunEnv(t *testing.T) *runEnv {
 		t.Fatal(err)
 	}
 	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$STUB_OUT\"\nexit " + strconv.Itoa(stubExit) + "\n"
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$STUB_OUT\"\nexit " + "7" + "\n"
+	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
