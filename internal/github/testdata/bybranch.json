@@ -1,0 +1,87 @@
+{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[
+          {
+            "number": 4,
+            "url": "https://github.com/acme/alpha/pull/4",
+            "title": "Branch PR, merged earlier",
+            "author": {"__typename": "User", "login": "ada", "id": "MDQ6VXNlcjE=", "name": "Ada Lovelace"},
+            "state": "MERGED",
+            "isDraft": false,
+            "headRefName": "feat/x",
+            "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0004",
+            "baseRefName": "main",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": "REVIEW_REQUIRED",
+            "updatedAt": "2024-05-02T12:00:00Z",
+            "autoMergeRequest": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "SUCCESS",
+                      "contexts": {
+                        "pageInfo": {"hasNextPage": false},
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "name": "build",
+                            "status": "COMPLETED",
+                            "conclusion": "SUCCESS",
+                            "startedAt": "2024-05-03T11:00:00Z",
+                            "completedAt": "2024-05-03T11:05:00Z",
+                            "detailsUrl": "https://github.com/acme/alpha/actions/runs/4/job/1",
+                            "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+,
+          {
+            "number": 2,
+            "url": "https://github.com/acme/alpha/pull/2",
+            "title": "Branch PR, closed",
+            "author": {"__typename": "User", "login": "ada", "id": "MDQ6VXNlcjE=", "name": "Ada Lovelace"},
+            "state": "CLOSED",
+            "isDraft": false,
+            "headRefName": "feat/x",
+            "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0002",
+            "baseRefName": "main",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": "REVIEW_REQUIRED",
+            "updatedAt": "2024-05-02T12:00:00Z",
+            "autoMergeRequest": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "SUCCESS",
+                      "contexts": {
+                        "pageInfo": {"hasNextPage": false},
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "name": "build",
+                            "status": "COMPLETED",
+                            "conclusion": "SUCCESS",
+                            "startedAt": "2024-05-03T11:00:00Z",
+                            "completedAt": "2024-05-03T11:05:00Z",
+                            "detailsUrl": "https://github.com/acme/alpha/actions/runs/2/job/1",
+                            "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+]}}}}

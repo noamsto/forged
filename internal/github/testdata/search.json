@@ -1,0 +1,89 @@
+{"data":{"search":{"issueCount":3,"nodes":[
+          {
+            "number": 7,
+            "url": "https://github.com/acme/alpha/pull/7",
+            "title": "Mine in alpha",
+            "author": {"__typename": "User", "login": "ada", "id": "MDQ6VXNlcjE=", "name": "Ada Lovelace"},
+            "state": "OPEN",
+            "isDraft": false,
+            "headRefName": "feat/pr-7",
+            "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0007",
+            "baseRefName": "main",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": "REVIEW_REQUIRED",
+            "updatedAt": "2024-05-02T12:00:00Z",
+            "autoMergeRequest": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "SUCCESS",
+                      "contexts": {
+                        "pageInfo": {"hasNextPage": false},
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "name": "build",
+                            "status": "COMPLETED",
+                            "conclusion": "SUCCESS",
+                            "startedAt": "2024-05-03T11:00:00Z",
+                            "completedAt": "2024-05-03T11:05:00Z",
+                            "detailsUrl": "https://github.com/acme/alpha/actions/runs/7/job/1",
+                            "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+,
+{}
+,
+          {
+            "number": 3,
+            "url": "https://github.com/acme/beta/pull/3",
+            "title": "Mine in beta",
+            "author": {"__typename": "User", "login": "ada", "id": "MDQ6VXNlcjE=", "name": "Ada Lovelace"},
+            "state": "OPEN",
+            "isDraft": false,
+            "headRefName": "feat/pr-3",
+            "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0003",
+            "baseRefName": "main",
+            "mergeable": "MERGEABLE",
+            "mergeStateStatus": "CLEAN",
+            "reviewDecision": "REVIEW_REQUIRED",
+            "updatedAt": "2024-05-02T12:00:00Z",
+            "autoMergeRequest": null,
+            "commits": {
+              "nodes": [
+                {
+                  "commit": {
+                    "statusCheckRollup": {
+                      "state": "SUCCESS",
+                      "contexts": {
+                        "pageInfo": {"hasNextPage": false},
+                        "nodes": [
+                          {
+                            "__typename": "CheckRun",
+                            "name": "build",
+                            "status": "COMPLETED",
+                            "conclusion": "SUCCESS",
+                            "startedAt": "2024-05-03T11:00:00Z",
+                            "completedAt": "2024-05-03T11:05:00Z",
+                            "detailsUrl": "https://github.com/acme/beta/actions/runs/3/job/1",
+                            "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+]}}}
