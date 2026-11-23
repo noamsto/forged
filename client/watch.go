@@ -12,10 +12,10 @@ import (
 	"github.com/noamsto/forge-cache/forge"
 )
 
-// Watch streams the current state of the matching changes, then every update, until ctx is
-// cancelled or the daemon closes the stream. number 0 watches the whole repo. The daemon
-// keeps the watched keys leased while the stream is open.
-func (c *Client) Watch(ctx context.Context, repo forge.RepoRef, number int) (<-chan forge.Event, error) {
+// Watch streams the typed change events of the matching changes until ctx is cancelled or
+// the daemon closes the stream. number 0 watches the whole repo. The daemon keeps the
+// watched keys leased while the stream is open.
+func (c *Client) Watch(ctx context.Context, repo forge.RepoRef, number int) (<-chan forge.ChangeEvent, error) {
 	q := url.Values{"repo": {repo.String()}}
 	if number != 0 {
 		q.Set("number", strconv.Itoa(number))
@@ -24,19 +24,19 @@ func (c *Client) Watch(ctx context.Context, repo forge.RepoRef, number int) (<-c
 	if err != nil {
 		return nil, err
 	}
-	ch := make(chan forge.Event)
+	ch := make(chan forge.ChangeEvent)
 	go stream(ctx, body, ch)
 	return ch, nil
 }
 
 // stream decodes newline-delimited events from body into ch, closing both when it ends.
-func stream(ctx context.Context, body io.ReadCloser, ch chan<- forge.Event) {
+func stream(ctx context.Context, body io.ReadCloser, ch chan<- forge.ChangeEvent) {
 	defer close(ch)
 	defer func() { _ = body.Close() }()
 	sc := bufio.NewScanner(body)
 	sc.Buffer(nil, 16<<20)
 	for sc.Scan() {
-		var ev forge.Event
+		var ev forge.ChangeEvent
 		if json.Unmarshal(sc.Bytes(), &ev) != nil {
 			return
 		}

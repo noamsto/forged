@@ -19,6 +19,7 @@ type Options struct {
 	BatchWindow   time.Duration
 	Tick          time.Duration
 	MaxBackoff    time.Duration
+	EventBuffer   int
 	Clock         clock.Clock
 }
 
@@ -36,6 +37,7 @@ func DefaultOptions() Options {
 		BatchWindow:   10 * time.Millisecond,
 		Tick:          time.Second,
 		MaxBackoff:    10 * time.Minute,
+		EventBuffer:   4096,
 		Clock:         clock.Real{},
 	}
 }

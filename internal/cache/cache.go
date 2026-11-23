@@ -65,6 +65,7 @@ type Cache struct {
 	inflightList map[forge.RepoRef]chan struct{}  // closed when that repo-open fetch has stored
 	paused       map[string]*forge.RateLimitError // by provider name, until RetryAfter
 	subs         map[*subscriber]struct{}
+	events       eventLog
 	meter        meter
 }
 
@@ -79,6 +80,7 @@ func New(providers map[string]forge.Provider, o Options) *Cache {
 		inflightList: map[forge.RepoRef]chan struct{}{},
 		paused:       map[string]*forge.RateLimitError{},
 		subs:         map[*subscriber]struct{}{},
+		events:       newEventLog(o.Clock.Now(), o.EventBuffer),
 		meter:        meter{calls: map[string]int{}},
 	}
 	for name, p := range providers {
@@ -416,15 +418,18 @@ func (c *Cache) staleDropped(r forge.RepoRef, open []forge.ChangeRef) {
 	}
 }
 
-// store writes fetched changes through to their change entries; every fetch
-// path applies its results here. Requires c.mu.
+// store writes fetched changes through to their change entries and emits the
+// events of each change that had a previous value; every fetch path applies
+// its results here. Requires c.mu.
 func (c *Cache) store(now time.Time, changes []forge.Change) {
 	for _, ch := range changes {
 		e := c.changeEntry(forge.ChangeKey(ch.Repo, ch.Number))
-		old := e.val
+		prev, hadPrev := e.val, e.ok
 		e.val, e.ok, e.fetchedAt, e.fullAt = ch, true, now, now
 		e.lastErr, e.backoff = nil, 0
-		c.publish(old, ch)
+		if hadPrev {
+			c.emit(now, forge.Diff(prev, ch))
+		}
 	}
 }
 

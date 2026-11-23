@@ -1,36 +1,88 @@
 package cache
 
 import (
-	"reflect"
+	"slices"
 
 	"github.com/noamsto/forge-cache/forge"
 )
 
-const subscriberBuffer = 64
+// liveBuffer is the room a subscriber channel has for live events beyond its replay.
+const liveBuffer = 256
 
-// Filter selects the changes a subscriber receives; Number 0 means the whole repo.
+// Filter selects the events a subscriber receives. Number 0 means the whole
+// repo, empty Types every type; with HasSince, buffered events after Since are
+// replayed first.
 type Filter struct {
-	Repo   forge.RepoRef
-	Number int
+	Repo     forge.RepoRef
+	Number   int
+	Types    []forge.EventType
+	Since    uint64
+	HasSince bool
 }
 
+// matches reports whether k is kept leased by the subscription: its change
+// keys and, for a whole-repo one, the repo's open list.
 func (f Filter) matches(k forge.Key) bool {
-	return k.Kind == forge.KindChange && k.Repo == f.Repo && (f.Number == 0 || f.Number == k.Number)
+	if k.Repo != f.Repo {
+		return false
+	}
+	switch k.Kind {
+	case forge.KindChange:
+		return f.Number == 0 || f.Number == k.Number
+	case forge.KindRepoOpen:
+		return f.Number == 0
+	default:
+		return false
+	}
+}
+
+func (f Filter) matchesEvent(ev forge.ChangeEvent) bool {
+	return ev.Repo == f.Repo && (f.Number == 0 || f.Number == ev.Number) &&
+		(len(f.Types) == 0 || slices.Contains(f.Types, ev.Type))
+}
+
+// key is the entry a subscription keeps fetched.
+func (f Filter) key() forge.Key {
+	if f.Number > 0 {
+		return forge.ChangeKey(f.Repo, f.Number)
+	}
+	return forge.RepoOpen(f.Repo)
 }
 
 type subscriber struct {
 	f  Filter
-	ch chan forge.Event
+	ch chan forge.ChangeEvent
 }
 
-// Subscribe streams an event whenever a matching change's stored value
-// changes. Matching keys stay leased while subscribed. A subscriber that falls
-// 64 events behind loses its oldest ones; cancel stops delivery and closes the channel.
-func (c *Cache) Subscribe(f Filter) (<-chan forge.Event, func()) {
-	s := &subscriber{f: f, ch: make(chan forge.Event, subscriberBuffer)}
+// Subscribe streams the typed events of the changes f selects and keeps them
+// leased and hot-polled while subscribed. A subscriber that falls behind has
+// its channel closed and should resubscribe with its last seq as Since; cancel
+// stops delivery and closes the channel.
+func (c *Cache) Subscribe(f Filter) (<-chan forge.ChangeEvent, func(), error) {
+	k := f.key()
+	if _, err := c.provider(k); err != nil {
+		return nil, nil, err
+	}
+
 	c.mu.Lock()
+	defer c.mu.Unlock()
+	if k.IsList() {
+		c.listEntry(k)
+	} else {
+		c.changeEntry(k)
+	}
+	var replay []forge.ChangeEvent
+	if f.HasSince {
+		if oldest := c.events.oldestSeq(); f.Since < oldest-1 {
+			replay = append(replay, forge.ChangeEvent{Type: forge.EventResync, Seq: oldest - 1})
+		}
+		replay = append(replay, c.events.since(f.Since, f)...)
+	}
+	s := &subscriber{f: f, ch: make(chan forge.ChangeEvent, len(replay)+liveBuffer)}
+	for _, ev := range replay {
+		s.ch <- ev
+	}
 	c.subs[s] = struct{}{}
-	c.mu.Unlock()
 	return s.ch, func() {
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -38,7 +90,7 @@ func (c *Cache) Subscribe(f Filter) (<-chan forge.Event, func()) {
 			delete(c.subs, s)
 			close(s.ch)
 		}
-	}
+	}, nil
 }
 
 // watched reports whether a subscriber matches k. Requires c.mu.
@@ -49,31 +101,4 @@ func (c *Cache) watched(k forge.Key) bool {
 		}
 	}
 	return false
-}
-
-// publish emits an event when a change's stored value differs from the
-// previous one. Requires c.mu.
-func (c *Cache) publish(old, cur forge.Change) {
-	if reflect.DeepEqual(old, cur) {
-		return
-	}
-	k := forge.ChangeKey(cur.Repo, cur.Number)
-	ev := forge.Event{Key: k, Change: cur}
-	for s := range c.subs {
-		if !s.f.matches(k) {
-			continue
-		}
-		for {
-			select {
-			case s.ch <- ev:
-			default:
-				select { // full: drop the oldest; only publishers under c.mu send
-				case <-s.ch:
-				default:
-				}
-				continue
-			}
-			break
-		}
-	}
 }

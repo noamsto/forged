@@ -56,11 +56,12 @@ func (c *Cache) leasedMembers(now time.Time) map[forge.ChangeRef]bool {
 	return members
 }
 
-// hotContent: state the repo probe cannot see moving, so it is polled directly.
-func (c *Cache) hotContent(now time.Time, e *changeEntry) bool {
+// hotContent: state the repo probe cannot see moving, or a subscribed change,
+// so it is polled directly. Requires c.mu.
+func (c *Cache) hotContent(now time.Time, k forge.Key, e *changeEntry) bool {
 	return e.ok && e.val.IsOpen() && (e.val.Checks.Rollup == forge.RollupPending ||
 		e.val.Mergeable == forge.MergeableUnknown ||
-		now.Before(e.focusUntil) || now.Before(e.hotUntil))
+		now.Before(e.focusUntil) || now.Before(e.hotUntil) || c.watched(k))
 }
 
 // changeTier requires c.mu.
@@ -68,7 +69,7 @@ func (c *Cache) changeTier(now time.Time, k forge.Key, e *changeEntry, members m
 	switch {
 	case !c.leased(now, e.lastRead) && !members[forge.ChangeRef{Repo: k.Repo, Number: k.Number}] && !c.watched(k):
 		return tierCold
-	case c.hotContent(now, e):
+	case c.hotContent(now, k, e):
 		return tierHot
 	}
 	return tierWarm
@@ -113,11 +114,11 @@ func (c *Cache) Tick(ctx context.Context) {
 	}
 }
 
-// evict drops entries unread for EvictAfter; a change stays while a kept list
-// holds it. Requires c.mu.
+// evict drops entries unread for EvictAfter and not subscribed; a change stays
+// while a kept list holds it. Requires c.mu.
 func (c *Cache) evict(now time.Time) {
 	for k, e := range c.lists {
-		if c.unread(now, e.lastRead, e.loadedAt) {
+		if c.unread(now, e.lastRead, e.loadedAt) && !c.watched(k) {
 			delete(c.lists, k)
 		}
 	}
@@ -158,7 +159,7 @@ func (c *Cache) plan(now time.Time) map[string]*tickPlan {
 	// Members of a list refetched this tick come back with it.
 	refetched := map[forge.ChangeRef]bool{}
 	for k, e := range c.lists {
-		if !c.leased(now, e.lastRead) {
+		if !c.leased(now, e.lastRead) && !c.watched(k) {
 			continue
 		}
 		tp := planFor(k)
@@ -302,8 +303,9 @@ func (c *Cache) probe(ctx context.Context, name string, r forge.RepoRef, rp *rep
 			}
 		}
 		for _, ref := range revalidate {
-			e := c.changes[forge.ChangeKey(ref.Repo, ref.Number)]
-			if e == nil || e.fetchedAt.IsZero() || c.hotContent(now, e) {
+			k := forge.ChangeKey(ref.Repo, ref.Number)
+			e := c.changes[k]
+			if e == nil || e.fetchedAt.IsZero() || c.hotContent(now, k, e) {
 				continue
 			}
 			e.fetchedAt, e.backoff = now, 0
