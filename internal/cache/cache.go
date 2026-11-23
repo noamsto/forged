@@ -32,12 +32,12 @@ type changeEntry struct {
 	val        forge.Change
 	ok         bool // false with a non-zero fetchedAt = negative (absent upstream)
 	fetchedAt  time.Time
+	fullAt     time.Time // last real fetch; a probe revalidation bumps only fetchedAt
 	lastRead   time.Time
 	hotUntil   time.Time
 	focusUntil time.Time
-	nextPoll   time.Time
-	backoff    time.Duration
-	lastErr    error
+	poll
+	lastErr error
 }
 
 // negative reports a definitive absence; a never-fetched entry is not negative.
@@ -46,9 +46,9 @@ func (e *changeEntry) negative() bool { return !e.ok && !e.fetchedAt.IsZero() }
 type listEntry struct {
 	refs          []forge.ChangeRef
 	listFetchedAt time.Time
+	fullAt        time.Time
 	lastRead      time.Time
-	nextPoll      time.Time
-	backoff       time.Duration
+	poll
 }
 
 type Cache struct {
@@ -60,7 +60,8 @@ type Cache struct {
 	mu           sync.Mutex
 	changes      map[forge.Key]*changeEntry
 	lists        map[forge.Key]*listEntry
-	inflightList map[forge.RepoRef]chan struct{} // closed when that repo-open fetch has stored
+	inflightList map[forge.RepoRef]chan struct{}  // closed when that repo-open fetch has stored
+	paused       map[string]*forge.RateLimitError // by provider name, until RetryAfter
 }
 
 // New builds a Cache over providers keyed by forge+"/"+host (e.g. "github/github.com").
@@ -76,6 +77,7 @@ func New(providers map[string]forge.Provider, o Options) *Cache {
 		changes:      map[forge.Key]*changeEntry{},
 		lists:        map[forge.Key]*listEntry{},
 		inflightList: map[forge.RepoRef]chan struct{}{},
+		paused:       map[string]*forge.RateLimitError{},
 	}
 }
 
@@ -114,6 +116,14 @@ func (c *Cache) Read(ctx context.Context, k forge.Key, o ReadOpts) (Result, erro
 		fresh = c.fresh(k, maxAge)
 		c.mu.Unlock()
 	}
+	if !fresh {
+		c.mu.Lock()
+		rl := c.pause(name)
+		c.mu.Unlock()
+		if rl != nil {
+			return Result{}, rl
+		}
+	}
 
 	switch {
 	case fresh:
@@ -124,7 +134,7 @@ func (c *Cache) Read(ctx context.Context, k forge.Key, o ReadOpts) (Result, erro
 	default:
 		err = c.flight(ctx, k.String(), func(fctx context.Context) error {
 			if k.IsList() {
-				return c.fetchList(fctx, c.providers[name], k)
+				return c.fetchList(fctx, name, k)
 			}
 			return c.fetchChanges(name, []forge.ChangeRef{{Repo: k.Repo, Number: k.Number}})
 		})
@@ -274,14 +284,25 @@ func (c *Cache) flight(ctx context.Context, key string, fn func(context.Context)
 // fetchChanges fetches refs through the provider's batcher and applies each
 // outcome. It returns the first per-ref error other than absence.
 func (c *Cache) fetchChanges(name string, refs []forge.ChangeRef) error {
-	got := c.batchers[name].do(refs)
+	got := c.batchers[name].do(refs, false)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	now := c.o.Clock.Now()
-	var firstErr error
+	failed := c.applyFetched(name, got)
 	for _, ref := range refs {
-		f := got[ref]
+		if err := failed[ref]; err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// applyFetched records each outcome and returns the errors of the refs that
+// failed for a reason other than absence. Requires c.mu.
+func (c *Cache) applyFetched(name string, got map[forge.ChangeRef]forge.Fetched) map[forge.ChangeRef]error {
+	now := c.o.Clock.Now()
+	failed := map[forge.ChangeRef]error{}
+	for ref, f := range got {
 		switch {
 		case f.Err == nil:
 			c.store(now, []forge.Change{f.Change})
@@ -291,15 +312,15 @@ func (c *Cache) fetchChanges(name string, refs []forge.ChangeRef) error {
 			if e := c.changes[forge.ChangeKey(ref.Repo, ref.Number)]; e != nil {
 				e.lastErr = f.Err
 			}
-			if firstErr == nil {
-				firstErr = f.Err
-			}
+			c.notePause(name, f.Err)
+			failed[ref] = f.Err
 		}
 	}
-	return firstErr
+	return failed
 }
 
-func (c *Cache) fetchList(ctx context.Context, p forge.Provider, k forge.Key) error {
+func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
+	p := c.providers[name]
 	if k.Kind == forge.KindRepoOpen {
 		done := make(chan struct{})
 		c.mu.Lock()
@@ -323,6 +344,9 @@ func (c *Cache) fetchList(ctx context.Context, p forge.Provider, k forge.Key) er
 		changes, err = p.Search(ctx, k.Query, k.Limit)
 	}
 	if err != nil {
+		c.mu.Lock()
+		c.notePause(name, err)
+		c.mu.Unlock()
 		return err
 	}
 
@@ -343,7 +367,8 @@ func (c *Cache) fetchList(ctx context.Context, p forge.Provider, k forge.Key) er
 		c.lists[k] = e
 	}
 	e.refs = refs
-	e.listFetchedAt = now
+	e.listFetchedAt, e.fullAt = now, now
+	e.backoff = 0
 	return nil
 }
 
@@ -366,7 +391,7 @@ func (c *Cache) store(now time.Time, changes []forge.Change) {
 	for _, ch := range changes {
 		e := c.changeEntry(forge.ChangeKey(ch.Repo, ch.Number))
 		old := e.val
-		e.val, e.ok, e.fetchedAt = ch, true, now
+		e.val, e.ok, e.fetchedAt, e.fullAt = ch, true, now, now
 		e.lastErr, e.backoff = nil, 0
 		c.publish(old, ch)
 	}
@@ -375,7 +400,7 @@ func (c *Cache) store(now time.Time, changes []forge.Change) {
 // storeNegative records a definitive absence. Requires c.mu.
 func (c *Cache) storeNegative(now time.Time, ref forge.ChangeRef) {
 	e := c.changeEntry(forge.ChangeKey(ref.Repo, ref.Number))
-	e.val, e.ok, e.fetchedAt = forge.Change{}, false, now
+	e.val, e.ok, e.fetchedAt, e.fullAt = forge.Change{}, false, now, now
 	e.lastErr, e.backoff = nil, 0
 }
 

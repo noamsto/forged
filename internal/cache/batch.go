@@ -40,7 +40,8 @@ func newBatcher(p forge.Provider, clk clock.Clock, window time.Duration) *batche
 }
 
 // do queues refs and returns each one's outcome once its batch was fetched.
-func (b *batcher) do(refs []forge.ChangeRef) map[forge.ChangeRef]forge.Fetched {
+// With now set it sends everything queued without waiting for the window.
+func (b *batcher) do(refs []forge.ChangeRef, now bool) map[forge.ChangeRef]forge.Fetched {
 	waits := make(map[forge.ChangeRef]chan forge.Fetched, len(refs))
 	b.mu.Lock()
 	for _, ref := range refs {
@@ -49,7 +50,7 @@ func (b *batcher) do(refs []forge.ChangeRef) map[forge.ChangeRef]forge.Fetched {
 		b.pending[ref] = append(b.pending[ref], ch)
 	}
 	var batches []batch
-	if b.window == 0 {
+	if now || b.window == 0 {
 		batches = b.take(1)
 	} else {
 		batches = b.take(b.max)
