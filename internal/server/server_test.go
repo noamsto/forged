@@ -41,11 +41,17 @@ func shortDir(t *testing.T) string {
 
 func setup(t *testing.T) *harness {
 	t.Helper()
+	return setupWith(t, func(*cache.Options) {})
+}
+
+func setupWith(t *testing.T, tune func(*cache.Options)) *harness {
+	t.Helper()
 	clk := clock.NewFake(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
 	fake := forgetest.New()
 	o := cache.DefaultOptions()
 	o.Clock = clk
 	o.BatchWindow = 0
+	tune(&o)
 	c := cache.New(map[string]forge.Provider{"github/github.com": fake}, o)
 
 	sock := filepath.Join(shortDir(t), "s.sock")
@@ -246,34 +252,141 @@ func TestStatusReportsVersionAndStats(t *testing.T) {
 	}
 }
 
-func TestWatchSnapshotThenEvent(t *testing.T) {
-	h := setup(t)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	h.fake.SetChanges(repo, []forge.Change{change(1, "b")})
+// seed is the cursor below every event the cache will emit.
+func (h *harness) seed() uint64 { return uint64(h.clk.Now().UnixMicro()) }
 
-	ch, err := h.cl.Watch(ctx, repo, 1)
-	if err != nil {
+// primeChange stores change 1 so later updates produce events.
+func (h *harness) primeChange(t *testing.T) forge.Change {
+	t.Helper()
+	c := change(1, "b")
+	h.fake.SetChanges(repo, []forge.Change{c})
+	if _, err := h.cl.Change(context.Background(), repo, 1, client.ReadOptions{}); err != nil {
 		t.Fatal(err)
 	}
-	ev := recv(t, ch)
-	if ev.Change.Number != 1 || ev.Change.Title != "change" {
-		t.Fatalf("snapshot event = %+v", ev)
-	}
+	return c
+}
 
-	updated := change(1, "b")
-	updated.Title = "renamed"
-	h.fake.SetChanges(repo, []forge.Change{updated})
-	if err := h.cl.Invalidate(ctx, forge.ChangeKey(repo, 1)); err != nil {
+// update stores c on the fake and refetches it, emitting the resulting events.
+func (h *harness) update(t *testing.T, c forge.Change) {
+	t.Helper()
+	h.fake.SetChanges(repo, []forge.Change{c})
+	if err := h.cl.Invalidate(context.Background(), forge.ChangeKey(repo, c.Number)); err != nil {
 		t.Fatal(err)
-	}
-	ev = recv(t, ch)
-	if ev.Change.Title != "renamed" {
-		t.Fatalf("update event = %+v", ev)
 	}
 }
 
-func recv(t *testing.T, ch <-chan forge.Event) forge.Event {
+func watchCtx(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	t.Cleanup(cancel)
+	return ctx
+}
+
+func TestWatchStreamsTypedEvents(t *testing.T) {
+	h := setup(t)
+	c := h.primeChange(t)
+
+	ch, err := h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Draft = true
+	h.update(t, c)
+	ev := recv(t, ch)
+	if ev.Type != forge.EventDraftChanged || ev.Number != 1 || ev.Repo != repo || ev.New != "draft" || ev.Seq <= h.seed() {
+		t.Fatalf("event = %+v", ev)
+	}
+}
+
+func TestWatchTypesFilter(t *testing.T) {
+	h := setup(t)
+	c := h.primeChange(t)
+
+	ch, err := h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{
+		Repo: repo, Number: 1, Types: []forge.EventType{forge.EventStateChanged, forge.EventHeadChanged},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Draft = true
+	c.State = forge.StateMerged
+	h.update(t, c)
+	if ev := recv(t, ch); ev.Type != forge.EventStateChanged || ev.New != string(forge.StateMerged) {
+		t.Fatalf("first event = %+v, want state.changed", ev)
+	}
+
+	c.Draft = false
+	c.Head.SHA = "abc"
+	h.update(t, c)
+	if ev := recv(t, ch); ev.Type != forge.EventHeadChanged {
+		t.Fatalf("second event = %+v, want head.changed", ev)
+	}
+}
+
+func TestWatchSinceReplays(t *testing.T) {
+	h := setup(t)
+	c := h.primeChange(t)
+	c.Draft = true
+	h.update(t, c)
+	c.State = forge.StateMerged
+	h.update(t, c)
+
+	ch, err := h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: ptr(h.seed())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, second := recv(t, ch), recv(t, ch)
+	if first.Type != forge.EventDraftChanged || second.Type != forge.EventStateChanged || second.Seq <= first.Seq {
+		t.Fatalf("replay = %+v, %+v", first, second)
+	}
+
+	ch, err = h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: ptr(first.Seq)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev := recv(t, ch); ev.Seq != second.Seq {
+		t.Fatalf("replay after first = %+v, want seq %d", ev, second.Seq)
+	}
+}
+
+func TestWatchSinceBelowRingResyncsFirst(t *testing.T) {
+	h := setupWith(t, func(o *cache.Options) { o.EventBuffer = 1 })
+	c := h.primeChange(t)
+	c.Draft = true
+	h.update(t, c)
+	c.State = forge.StateMerged
+	h.update(t, c)
+
+	ch, err := h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: ptr(h.seed())})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gap, kept := recv(t, ch), recv(t, ch)
+	if gap.Type != forge.EventResync || kept.Type != forge.EventStateChanged || gap.Seq != kept.Seq-1 {
+		t.Fatalf("stream = %+v, %+v", gap, kept)
+	}
+}
+
+func TestWatchRejectsBadParams(t *testing.T) {
+	h := setup(t)
+	for path, want := range map[string]int{
+		"/v1/watch?repo=github.com/o/r&types=bogus":                    http.StatusBadRequest,
+		"/v1/watch?repo=github.com/o/r&types=state.changed,bogus":      http.StatusBadRequest,
+		"/v1/watch?repo=github.com/o/r&types=resync":                   http.StatusBadRequest,
+		"/v1/watch?repo=github.com/o/r&since=abc":                      http.StatusBadRequest,
+		"/v1/watch?repo=github.com/o/r&since=-1":                       http.StatusBadRequest,
+		"/v1/watch?repo=gitlab.com/o/r":                                http.StatusNotImplemented,
+		"/v1/watch?repo=gitlab.com/o/r&types=state.changed&since=1234": http.StatusNotImplemented,
+	} {
+		if got := rawGet(t, h.sock, path); got != want {
+			t.Errorf("GET %s = %d, want %d", path, got, want)
+		}
+	}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func recv(t *testing.T, ch <-chan forge.ChangeEvent) forge.ChangeEvent {
 	t.Helper()
 	select {
 	case ev, ok := <-ch:
@@ -284,7 +397,7 @@ func recv(t *testing.T, ch <-chan forge.Event) forge.Event {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for watch event")
 	}
-	return forge.Event{}
+	return forge.ChangeEvent{}
 }
 
 func TestUnavailableSocket(t *testing.T) {

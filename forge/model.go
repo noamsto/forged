@@ -142,9 +142,3 @@ type AutoMerge struct {
 	CommitHeadline *string   `json:"commitHeadline,omitempty"`
 	CommitBody     *string   `json:"commitBody,omitempty"`
 }
-
-// Event reports that the stored value of a change differs from the previous one.
-type Event struct {
-	Key    Key    `json:"key"`
-	Change Change `json:"change"`
-}

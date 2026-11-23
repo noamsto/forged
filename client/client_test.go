@@ -125,3 +125,90 @@ func TestDefaultSocket(t *testing.T) {
 		t.Fatalf("DefaultSocket with override = %q", got)
 	}
 }
+
+func TestSubscribeSendsParamsAndClosesWhenStreamEnds(t *testing.T) {
+	var got captured
+	sock := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got.mu.Lock()
+		got.path, got.query = r.URL.Path, r.URL.Query()
+		got.mu.Unlock()
+		enc := json.NewEncoder(w)
+		_ = enc.Encode(forge.ChangeEvent{Seq: 8, Type: forge.EventStateChanged, Repo: repo, Number: 3, New: "merged"})
+		_ = enc.Encode(forge.ChangeEvent{Seq: 9, Type: forge.EventResync})
+	}))
+	cl := client.New(sock)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	since := uint64(7)
+	ch, err := cl.Subscribe(ctx, client.SubscribeOptions{
+		Repo: repo, Number: 3, Since: &since,
+		Types: []forge.EventType{forge.EventStateChanged, forge.EventResync},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var evs []forge.ChangeEvent
+	for ev := range ch {
+		evs = append(evs, ev)
+	}
+	if len(evs) != 2 || evs[0].Seq != 8 || evs[0].New != "merged" || evs[1].Type != forge.EventResync {
+		t.Fatalf("events = %+v", evs)
+	}
+	path, q := got.get()
+	if path != "/v1/watch" || q.Get("repo") != "github.com/o/r" || q.Get("number") != "3" ||
+		q.Get("types") != "state.changed,resync" || q.Get("since") != "7" {
+		t.Fatalf("request = %s?%v", path, q)
+	}
+
+	zero := uint64(0)
+	if _, err := cl.Subscribe(ctx, client.SubscribeOptions{Repo: repo, Since: &zero}); err != nil {
+		t.Fatal(err)
+	}
+	if _, q := got.get(); q.Get("since") != "0" || q.Has("number") || q.Has("types") {
+		t.Fatalf("zero-since request = %v", q)
+	}
+	if _, err := cl.Subscribe(ctx, client.SubscribeOptions{Repo: repo}); err != nil {
+		t.Fatal(err)
+	}
+	if _, q := got.get(); q.Has("since") {
+		t.Fatalf("nil-since request = %v", q)
+	}
+}
+
+func TestSubscribeAgainstRealServerHonoursSince(t *testing.T) {
+	fake := forgetest.New()
+	clk := clock.NewFake(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+	o := cache.DefaultOptions()
+	o.Clock = clk
+	o.BatchWindow = 0
+	c := cache.New(map[string]forge.Provider{"github/github.com": fake}, o)
+	cl := client.New(serve(t, server.New(c, "v1")))
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	ch := forge.Change{Repo: repo, Number: 7, State: forge.StateOpen}
+	fake.SetChanges(repo, []forge.Change{ch})
+	if _, err := cl.Change(ctx, repo, 7, client.ReadOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	ch.State = forge.StateMerged
+	fake.SetChanges(repo, []forge.Change{ch})
+	if err := cl.Invalidate(ctx, forge.ChangeKey(repo, 7)); err != nil {
+		t.Fatal(err)
+	}
+
+	since := uint64(clk.Now().UnixMicro())
+	events, err := cl.Subscribe(ctx, client.SubscribeOptions{Repo: repo, Number: 7, Since: &since})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case ev, ok := <-events:
+		if !ok || ev.Type != forge.EventStateChanged || ev.Number != 7 {
+			t.Fatalf("event = %+v, ok=%v", ev, ok)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("no replayed event")
+	}
+}

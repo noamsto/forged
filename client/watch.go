@@ -8,17 +8,36 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/noamsto/forge-cache/forge"
 )
 
-// Watch streams the typed change events of the matching changes until ctx is cancelled or
-// the daemon closes the stream. number 0 watches the whole repo. The daemon keeps the
-// watched keys leased while the stream is open.
-func (c *Client) Watch(ctx context.Context, repo forge.RepoRef, number int) (<-chan forge.ChangeEvent, error) {
-	q := url.Values{"repo": {repo.String()}}
-	if number != 0 {
-		q.Set("number", strconv.Itoa(number))
+// SubscribeOptions selects the events to receive. Number 0 watches the whole repo, empty
+// Types every type, and a non-nil Since replays buffered events after that seq first.
+type SubscribeOptions struct {
+	Repo   forge.RepoRef
+	Number int
+	Types  []forge.EventType
+	Since  *uint64
+}
+
+// Subscribe streams the typed change events matching o until ctx is cancelled or the
+// daemon closes the stream. The daemon keeps the watched keys leased while the stream is open.
+func (c *Client) Subscribe(ctx context.Context, o SubscribeOptions) (<-chan forge.ChangeEvent, error) {
+	q := url.Values{"repo": {o.Repo.String()}}
+	if o.Number != 0 {
+		q.Set("number", strconv.Itoa(o.Number))
+	}
+	if len(o.Types) > 0 {
+		names := make([]string, len(o.Types))
+		for i, t := range o.Types {
+			names[i] = string(t)
+		}
+		q.Set("types", strings.Join(names, ","))
+	}
+	if o.Since != nil {
+		q.Set("since", strconv.FormatUint(*o.Since, 10))
 	}
 	body, err := c.send(ctx, http.MethodGet, "/v1/watch", q, nil)
 	if err != nil {
