@@ -58,8 +58,11 @@ The socket unit listens on `$XDG_RUNTIME_DIR/forged/forged.sock`
 (`SocketMode=0600`, `DirectoryMode=0700`); systemd starts the daemon on the first
 connection. Without activation, `forged serve` listens on `--socket`, else
 the same default path (an error if `XDG_RUNTIME_DIR` is unset). A stale socket
-file that nothing answers on is removed. Clients resolve the path from
-`FORGED_SOCKET`, else the default.
+file that nothing answers on is removed; `--socket` pointing at anything that is
+not a socket is refused, and the socket is created `0600`. Clients resolve the
+path from `FORGED_SOCKET`, else the default; with neither `FORGED_SOCKET` nor
+`XDG_RUNTIME_DIR` set the client refuses to run (`forged pr` then falls back to
+`gh`).
 
 The daemon saves a snapshot of its entries every 60s and on shutdown
 (`SIGINT`/`SIGTERM`) to `$XDG_STATE_HOME/forged/snapshot.json` (fallback
@@ -102,9 +105,9 @@ JSON over the unix socket. `repo` is `host/owner/name`, for example
 | Route | Parameters | Returns |
 | --- | --- | --- |
 | `GET /v1/changes` | `repo`; optional `head` (branch) | Open changes of the repo, or the changes of that branch |
-| `GET /v1/change` | `repo`, `number` | One change |
-| `GET /v1/search` | `forge`, `q`; optional `limit` | Changes matching a forge search query |
-| `POST /v1/invalidate` | JSON body `{"key": <forge.Key>}` | `{}` after the refetch |
+| `GET /v1/change` | `repo`, `number` (1 to 2147483647) | One change |
+| `GET /v1/search` | `forge`, `q`; optional `limit` (default 30, 1..100) | Changes matching a forge search query |
+| `POST /v1/invalidate` | JSON body `{"key": <forge.Key>}`; the key is validated (kind, repo, number range, branch, query, limit) | `{}` after the refetch |
 | `GET /v1/status` | none | `{"version", "stats"}` |
 | `GET /v1/watch` | `repo`; optional `number` (omit for the whole repo), `types` (comma-separated event types), `since` (sequence number) | Newline-delimited JSON stream of change events (no state snapshot) |
 
@@ -166,7 +169,10 @@ Falls back to `gh` when:
 - the repository cannot be resolved to a single `github.com` remote (several
   remotes, or `gh repo set-default`), or the host is a GitHub Enterprise host;
 - the daemon is unavailable, answers non-2xx, or the `--jq` expression fails to
-  compile.
+  compile or fails at run time. Output is written only after jq succeeds, so a
+  fallback never repeats lines.
+
+The fallback drops `--max-age`, which `gh` does not know.
 
 `FORGED_NO_FALLBACK=1` disables the fallback and reports the error instead.
 
@@ -180,8 +186,10 @@ way `gh` does it.
 repo comes from `-R`, `GH_REPO` or the git remote; `--pr N` narrows to one PR,
 `--event` to a list of types, and `--since SEQ` replays buffered events after
 that sequence number first. There is no `gh` fallback. Exit codes: 0 on
-interrupt, 1 when the daemon is unavailable or the stream ended (stderr prints
-the `--since` to reconnect with), 2 on bad usage.
+interrupt, 1 when the daemon is unavailable or the stream ended, 2 on bad usage.
+When the stream ends after events (or with `--since`), stderr prints the
+`--since` to reconnect with; if it ended before any event, stderr says
+`stream ended before any event` with no resume hint.
 
 Events carry `seq`, `type`, `repo`, `number`, `url`, `old`, `new`, `at` and, for
 `review.submitted`, `review`.

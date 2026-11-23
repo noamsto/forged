@@ -4,6 +4,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"syscall"
 	"testing"
 )
 
@@ -110,5 +111,39 @@ func TestListenRefusesLiveSocket(t *testing.T) {
 	if err == nil {
 		_ = ln.Close()
 		t.Fatal("second Listen succeeded against a live listener")
+	}
+}
+
+func TestListenRefusesNonSocketPath(t *testing.T) {
+	path := filepath.Join(shortDir(t), "s.sock")
+	if err := os.WriteFile(path, []byte("precious"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := Listen(path)
+	if err == nil {
+		_ = ln.Close()
+		t.Fatal("Listen replaced a regular file")
+	}
+	if b, rerr := os.ReadFile(path); rerr != nil || string(b) != "precious" {
+		t.Fatalf("file after Listen = %q, %v", b, rerr)
+	}
+}
+
+// Not parallel: the process umask is global.
+func TestListenSocketModeIs0600(t *testing.T) {
+	old := syscall.Umask(0o002)
+	t.Cleanup(func() { syscall.Umask(old) })
+	path := filepath.Join(shortDir(t), "s.sock")
+	ln, err := Listen(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := fi.Mode().Perm(); perm != 0o600 {
+		t.Fatalf("socket perm = %o, want 600", perm)
 	}
 }

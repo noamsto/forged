@@ -19,6 +19,7 @@ type Options struct {
 	BatchWindow   time.Duration
 	Tick          time.Duration
 	MaxBackoff    time.Duration
+	FetchTimeout  time.Duration // bounds each shared upstream call
 	EventBuffer   int
 	Clock         clock.Clock
 }
@@ -37,6 +38,7 @@ func DefaultOptions() Options {
 		BatchWindow:   10 * time.Millisecond,
 		Tick:          time.Second,
 		MaxBackoff:    10 * time.Minute,
+		FetchTimeout:  45 * time.Second,
 		EventBuffer:   4096,
 		Clock:         clock.Real{},
 	}

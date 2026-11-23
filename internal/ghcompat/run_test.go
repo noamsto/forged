@@ -228,3 +228,37 @@ func TestRunNoFallbackDaemonDownFails(t *testing.T) {
 		t.Error("stub gh was called")
 	}
 }
+
+func TestRunFallbackStripsMaxAge(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			"separate value",
+			[]string{"pr", "view", "213", "--max-age", "0", "--json", "number"},
+			[]string{"pr", "view", "213", "--json", "number"},
+		},
+		{
+			"equals value",
+			[]string{"pr", "view", "213", "--max-age=0", "--json", "number"},
+			[]string{"pr", "view", "213", "--json", "number"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newRunEnv(t)
+			code, stdout, _ := e.run(t, tc.args...)
+			e.wantFallback(t, code, stdout, tc.want)
+		})
+	}
+}
+
+func TestRunJQRuntimeErrorWritesNothingBeforeFallback(t *testing.T) {
+	e := newRunEnv(t)
+	c := refUser()
+	e.serve(t).SetChanges(c.Repo, []forge.Change{c})
+	args := []string{"pr", "view", "213", "--json", "number", "--jq", `.number, error("x")`}
+	code, stdout, _ := e.run(t, args...)
+	e.wantFallback(t, code, stdout, args)
+}

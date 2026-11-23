@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -28,6 +29,11 @@ type Options struct {
 	HTTPClient          *http.Client
 	Token               func(context.Context) (string, error)
 }
+
+const (
+	defaultTimeout    = 30 * time.Second
+	defaultRetryAfter = time.Minute
+)
 
 type Provider struct {
 	graphqlURL  string
@@ -49,7 +55,7 @@ func New(o Options) *Provider {
 		o.RESTURL = defaultRESTURL
 	}
 	if o.HTTPClient == nil {
-		o.HTTPClient = http.DefaultClient
+		o.HTTPClient = &http.Client{Timeout: defaultTimeout}
 	}
 	if o.Token == nil {
 		o.Token = TokenFromEnvOrGh
@@ -59,13 +65,13 @@ func New(o Options) *Provider {
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	auth := &authTransport{base: base, token: o.Token}
-	client.Transport = auth
+	tokens := &tokenCache{fetch: o.Token}
+	client.Transport = &authTransport{base: base, tokens: tokens}
 	return &Provider{
 		graphqlURL:  o.GraphQLURL,
 		restURL:     o.RESTURL,
 		client:      &client,
-		probeClient: probeClient(&client, auth),
+		probeClient: probeClient(&client, base, tokens),
 		probed:      map[forge.RepoRef]struct{}{},
 	}
 }
@@ -74,31 +80,41 @@ func (p *Provider) Capabilities() forge.Capabilities {
 	return forge.Capabilities{Events: false, ConditionalRequests: true, MaxBatch: maxBatch}
 }
 
-// authTransport adds the bearer token and re-reads it once on a 401.
-type authTransport struct {
-	base  http.RoundTripper
-	token func(context.Context) (string, error)
+// tokenCache memoizes the token; both transports share one so a 401 refresh
+// reaches them together.
+type tokenCache struct {
+	fetch func(context.Context) (string, error)
 
 	mu     sync.Mutex
 	cached string
 }
 
-func (t *authTransport) get(ctx context.Context, refresh bool) (string, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.cached == "" || refresh {
-		tok, err := t.token(ctx)
+func (c *tokenCache) get(ctx context.Context, refresh bool) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.cached == "" || refresh {
+		tok, err := c.fetch(ctx)
 		if err != nil {
 			return "", err
 		}
-		t.cached = tok
+		c.cached = tok
 	}
-	return t.cached, nil
+	return c.cached, nil
+}
+
+// authTransport adds the bearer token and re-reads it once on a 401.
+type authTransport struct {
+	base   http.RoundTripper
+	tokens *tokenCache
+}
+
+func (t *authTransport) get(ctx context.Context, refresh bool) (string, error) {
+	return t.tokens.get(ctx, refresh)
 }
 
 func (t *authTransport) send(req *http.Request, token string) (*http.Response, error) {
 	r := req.Clone(req.Context())
-	r.Header.Set("Authorization", "bearer "+token)
+	r.Header.Set("Authorization", "Bearer "+token)
 	return t.base.RoundTrip(r)
 }
 
@@ -167,6 +183,13 @@ func (p *Provider) post(ctx context.Context, query string, vars map[string]any) 
 	if err := json.Unmarshal(body, &out); err != nil {
 		return out, fmt.Errorf("graphql: parse response: %w", err)
 	}
+	// GraphQL reports an exhausted budget on a 200.
+	if resp.Header.Get("X-RateLimit-Remaining") == "0" || slices.ContainsFunc(out.Errors, func(e gqlError) bool { return e.Type == "RATE_LIMITED" }) {
+		if rl := headerRateLimit(resp.Header); rl != nil {
+			return gqlResponse{}, rl
+		}
+		return gqlResponse{}, &forge.RateLimitError{RetryAfter: time.Now().Add(defaultRetryAfter)}
+	}
 	return out, nil
 }
 
@@ -174,13 +197,17 @@ func rateLimitError(resp *http.Response) *forge.RateLimitError {
 	if resp.StatusCode != http.StatusForbidden && resp.StatusCode != http.StatusTooManyRequests {
 		return nil
 	}
-	if s, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil {
+	return headerRateLimit(resp.Header)
+}
+
+func headerRateLimit(h http.Header) *forge.RateLimitError {
+	if s, err := strconv.Atoi(h.Get("Retry-After")); err == nil {
 		return &forge.RateLimitError{RetryAfter: time.Now().Add(time.Duration(s) * time.Second)}
 	}
-	if resp.Header.Get("X-RateLimit-Remaining") != "0" {
+	if h.Get("X-RateLimit-Remaining") != "0" {
 		return nil
 	}
-	if reset, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+	if reset, err := strconv.ParseInt(h.Get("X-RateLimit-Reset"), 10, 64); err == nil {
 		return &forge.RateLimitError{RetryAfter: time.Unix(reset, 0)}
 	}
 	return nil

@@ -2,11 +2,14 @@ package github
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync"
 	"testing"
+
+	ghtransport "github.com/bored-engineer/github-conditional-http-transport"
 
 	"github.com/noamsto/forged/forge"
 )
@@ -37,7 +40,7 @@ func (s *probeServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad query "+got, http.StatusBadRequest)
 		return
 	}
-	if r.Header.Get("Authorization") != "bearer test-token" {
+	if r.Header.Get("Authorization") != "Bearer test-token" {
 		http.Error(w, "no auth", http.StatusUnauthorized)
 		return
 	}
@@ -96,7 +99,29 @@ func TestProbeChangedThenUnchangedThenChanged(t *testing.T) {
 	}
 }
 
-func TestProbeSpeculativeHitIsChanged(t *testing.T) {
+func TestProbeRevalidatesWhenETagVariesOnAuthorization(t *testing.T) {
+	const body = `[{"number":1}]`
+	vary := []string{"Accept", "Authorization", "Cookie"}
+	p := newProbeProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := ghtransport.Hash(r.Header, vary)
+		_, _ = h.Write([]byte(body))
+		etag := `"` + hex.EncodeToString(h.Sum(nil)) + `"`
+		w.Header().Set("Vary", "Accept, Authorization, Cookie")
+		w.Header().Set("ETag", etag)
+		if r.Header.Get("If-None-Match") == etag {
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		_, _ = w.Write([]byte(body))
+	}))
+	for i, want := range []bool{true, false, false} {
+		if got := probeChanged(t, p); got != want {
+			t.Errorf("probe #%d: Changed = %v, want %v", i+1, got, want)
+		}
+	}
+}
+
+func TestProbeSpeculativeHitIsUnchangedAfterBaseline(t *testing.T) {
 	p := newProbeProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("If-None-Match") == "" {
 			t.Error("transport sent no speculative If-None-Match")
@@ -106,8 +131,8 @@ func TestProbeSpeculativeHitIsChanged(t *testing.T) {
 	if !probeChanged(t, p) {
 		t.Error("speculative 304: Changed = false, want true")
 	}
-	if !probeChanged(t, p) {
-		t.Error("speculative 304 again: Changed = false, want true (never a stored baseline)")
+	if probeChanged(t, p) {
+		t.Error("speculative 304 after baseline: Changed = true, want false (list is still empty)")
 	}
 }
 

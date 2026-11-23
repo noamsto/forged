@@ -14,20 +14,27 @@ const defaultMaxBatch = 50
 // batcher coalesces change fetches for one provider into GetMany calls: refs
 // queue for the batch window or until MaxBatch accumulate.
 type batcher struct {
-	name   string
-	meter  *meter
-	p      forge.Provider
-	clock  clock.Clock
-	window time.Duration
-	max    int
+	name    string
+	meter   *meter
+	p       forge.Provider
+	clock   clock.Clock
+	window  time.Duration
+	timeout time.Duration
+	max     int
 
 	mu      sync.Mutex
-	pending map[forge.ChangeRef][]chan forge.Fetched
+	pending map[forge.ChangeRef][]chan outcome
 	timer   clock.Timer
 	gen     int // invalidates the callback of a timer whose refs were already taken
 }
 
-func newBatcher(name string, p forge.Provider, clk clock.Clock, window time.Duration, m *meter) *batcher {
+// outcome is one ref's fetch result with the time its GetMany started.
+type outcome struct {
+	forge.Fetched
+	start time.Time
+}
+
+func newBatcher(name string, p forge.Provider, clk clock.Clock, window, timeout time.Duration, m *meter) *batcher {
 	maxBatch := p.Capabilities().MaxBatch
 	if maxBatch == 0 {
 		maxBatch = defaultMaxBatch
@@ -38,18 +45,19 @@ func newBatcher(name string, p forge.Provider, clk clock.Clock, window time.Dura
 		p:       p,
 		clock:   clk,
 		window:  window,
+		timeout: timeout,
 		max:     maxBatch,
-		pending: map[forge.ChangeRef][]chan forge.Fetched{},
+		pending: map[forge.ChangeRef][]chan outcome{},
 	}
 }
 
 // do queues refs and returns each one's outcome once its batch was fetched.
 // With now set it sends everything queued without waiting for the window.
-func (b *batcher) do(refs []forge.ChangeRef, now bool) map[forge.ChangeRef]forge.Fetched {
-	waits := make(map[forge.ChangeRef]chan forge.Fetched, len(refs))
+func (b *batcher) do(refs []forge.ChangeRef, now bool) map[forge.ChangeRef]outcome {
+	waits := make(map[forge.ChangeRef]chan outcome, len(refs))
 	b.mu.Lock()
 	for _, ref := range refs {
-		ch := make(chan forge.Fetched, 1)
+		ch := make(chan outcome, 1)
 		waits[ref] = ch
 		b.pending[ref] = append(b.pending[ref], ch)
 	}
@@ -68,7 +76,7 @@ func (b *batcher) do(refs []forge.ChangeRef, now bool) map[forge.ChangeRef]forge
 	for _, batch := range batches {
 		b.run(batch)
 	}
-	out := make(map[forge.ChangeRef]forge.Fetched, len(waits))
+	out := make(map[forge.ChangeRef]outcome, len(waits))
 	for ref, ch := range waits {
 		out[ref] = <-ch
 	}
@@ -92,7 +100,7 @@ func (b *batcher) flush(gen int) {
 	}
 }
 
-type batch map[forge.ChangeRef][]chan forge.Fetched
+type batch map[forge.ChangeRef][]chan outcome
 
 // take removes queued refs with their waiters in chunks of at most b.max while
 // at least atLeast remain, and retires the window timer once the queue is
@@ -126,16 +134,19 @@ func (b *batcher) run(bt batch) {
 		refs = append(refs, ref)
 	}
 	// Detached: waiters from several readers share this call.
+	ctx, cancel := context.WithTimeout(context.Background(), b.timeout)
+	defer cancel()
+	start := b.clock.Now()
 	end := b.meter.begin(b.name, "GetMany")
-	got, err := b.p.GetMany(context.Background(), refs)
+	got, err := b.p.GetMany(ctx, refs)
 	end()
 	for ref, waiters := range bt {
-		f := got[ref]
+		o := outcome{Fetched: got[ref], start: start}
 		if err != nil {
-			f = forge.Fetched{Err: err}
+			o.Fetched = forge.Fetched{Err: err}
 		}
 		for _, ch := range waiters {
-			ch <- f
+			ch <- o
 		}
 	}
 }

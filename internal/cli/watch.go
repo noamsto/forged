@@ -94,15 +94,23 @@ func watch(args []string, stdout, stderr io.Writer) int {
 
 	enc := json.NewEncoder(stdout)
 	var last uint64
+	resumable := opts.Since != nil
+	if resumable {
+		last = *opts.Since
+	}
 	for ev := range ch {
 		if err := enc.Encode(ev); err != nil {
 			_, _ = fmt.Fprintf(stderr, "forged: %v\n", err)
 			return 1
 		}
-		last = ev.Seq
+		last, resumable = ev.Seq, true
 	}
 	if errors.Is(ctx.Err(), context.Canceled) {
 		return 0
+	}
+	if !resumable {
+		_, _ = fmt.Fprintln(stderr, "forged: stream ended before any event")
+		return 1
 	}
 	_, _ = fmt.Fprintf(stderr, "forged: stream ended after seq %d; reconnect with --since %d\n", last, last)
 	return 1

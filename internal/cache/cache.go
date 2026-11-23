@@ -84,7 +84,7 @@ func New(providers map[string]forge.Provider, o Options) *Cache {
 		meter:        meter{calls: map[string]int{}},
 	}
 	for name, p := range providers {
-		c.batchers[name] = newBatcher(name, p, o.Clock, o.BatchWindow, &c.meter)
+		c.batchers[name] = newBatcher(name, p, o.Clock, o.BatchWindow, o.FetchTimeout, &c.meter)
 	}
 	return c
 }
@@ -302,7 +302,9 @@ func (c *Cache) staleMembers(k forge.Key, maxAge time.Duration) []forge.ChangeRe
 // the others that joined it.
 func (c *Cache) flight(ctx context.Context, key string, fn func(context.Context) error) error {
 	ch := c.flights.DoChan(key, func() (any, error) {
-		return nil, fn(context.WithoutCancel(ctx))
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.o.FetchTimeout)
+		defer cancel()
+		return nil, fn(fctx)
 	})
 	select {
 	case r := <-ch:
@@ -330,15 +332,15 @@ func (c *Cache) fetchChanges(name string, refs []forge.ChangeRef) error {
 
 // applyFetched records each outcome and returns the errors of the refs that
 // failed for a reason other than absence. Requires c.mu.
-func (c *Cache) applyFetched(name string, got map[forge.ChangeRef]forge.Fetched) map[forge.ChangeRef]error {
+func (c *Cache) applyFetched(name string, got map[forge.ChangeRef]outcome) map[forge.ChangeRef]error {
 	now := c.o.Clock.Now()
 	failed := map[forge.ChangeRef]error{}
 	for ref, f := range got {
 		switch {
 		case f.Err == nil:
-			c.store(now, []forge.Change{f.Change})
+			c.store(f.start, now, []forge.Change{f.Change})
 		case errors.Is(f.Err, forge.ErrNotFound):
-			c.storeNegative(now, ref)
+			c.storeNegative(f.start, now, ref)
 		default:
 			if e := c.changes[forge.ChangeKey(ref.Repo, ref.Number)]; e != nil {
 				e.lastErr = f.Err
@@ -366,6 +368,7 @@ func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
 	}
 	var changes []forge.Change
 	var err error
+	start := c.o.Clock.Now()
 	switch k.Kind {
 	case forge.KindRepoOpen:
 		end := c.meter.begin(name, "ListOpen")
@@ -390,15 +393,18 @@ func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.o.Clock.Now()
-	c.store(now, changes)
+	c.store(start, now, changes)
 	refs := make([]forge.ChangeRef, len(changes))
 	for i, ch := range changes {
 		refs[i] = forge.ChangeRef{Repo: ch.Repo, Number: ch.Number}
 	}
 	if k.Kind == forge.KindRepoOpen {
-		c.staleDropped(k.Repo, refs)
+		c.staleDropped(start, k.Repo, refs)
 	}
 	e := c.listEntry(k)
+	if e.fullAt.After(start) {
+		return nil
+	}
 	e.refs = refs
 	e.listFetchedAt, e.fullAt = now, now
 	e.backoff = 0
@@ -406,10 +412,11 @@ func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
 }
 
 // staleDropped zeroes fetchedAt of cached open changes of r that a fresh
-// repo-open result no longer holds, so their next read refetches. Requires c.mu.
-func (c *Cache) staleDropped(r forge.RepoRef, open []forge.ChangeRef) {
+// repo-open result started at start no longer holds, so their next read
+// refetches. Requires c.mu.
+func (c *Cache) staleDropped(start time.Time, r forge.RepoRef, open []forge.ChangeRef) {
 	for k, e := range c.changes {
-		if k.Repo != r || !e.ok || !e.val.IsOpen() {
+		if k.Repo != r || !e.ok || !e.val.IsOpen() || e.fullAt.After(start) {
 			continue
 		}
 		if !slices.Contains(open, forge.ChangeRef{Repo: r, Number: k.Number}) {
@@ -418,12 +425,16 @@ func (c *Cache) staleDropped(r forge.RepoRef, open []forge.ChangeRef) {
 	}
 }
 
-// store writes fetched changes through to their change entries and emits the
-// events of each change that had a previous value; every fetch path applies
-// its results here. Requires c.mu.
-func (c *Cache) store(now time.Time, changes []forge.Change) {
+// store writes changes fetched by a call started at start through to their
+// change entries and emits the events of each change that had a previous
+// value; every fetch path applies its results here. An entry a later-started
+// fetch already wrote keeps that newer value. Requires c.mu.
+func (c *Cache) store(start, now time.Time, changes []forge.Change) {
 	for _, ch := range changes {
 		e := c.changeEntry(forge.ChangeKey(ch.Repo, ch.Number))
+		if e.fullAt.After(start) {
+			continue
+		}
 		prev, hadPrev := e.val, e.ok
 		e.val, e.ok, e.fetchedAt, e.fullAt = ch, true, now, now
 		e.lastErr, e.backoff = nil, 0
@@ -433,9 +444,13 @@ func (c *Cache) store(now time.Time, changes []forge.Change) {
 	}
 }
 
-// storeNegative records a definitive absence. Requires c.mu.
-func (c *Cache) storeNegative(now time.Time, ref forge.ChangeRef) {
+// storeNegative records a definitive absence found by a call started at
+// start, unless a later-started fetch already wrote the entry. Requires c.mu.
+func (c *Cache) storeNegative(start, now time.Time, ref forge.ChangeRef) {
 	e := c.changeEntry(forge.ChangeKey(ref.Repo, ref.Number))
+	if e.fullAt.After(start) {
+		return
+	}
 	e.val, e.ok, e.fetchedAt, e.fullAt = forge.Change{}, false, now, now
 	e.lastErr, e.backoff = nil, 0
 }

@@ -52,7 +52,7 @@ func (f *fakeGitHub) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if got := r.Header.Get("Authorization"); !strings.HasPrefix(got, "bearer ") {
+	if got := r.Header.Get("Authorization"); !strings.HasPrefix(got, "Bearer ") {
 		f.t.Errorf("Authorization = %q, want bearer token", got)
 	}
 	var req gqlRequest
@@ -632,5 +632,106 @@ func TestTokenFallsBackToGhAuthToken(t *testing.T) {
 	got, err := TokenFromEnvOrGh(context.Background())
 	if err != nil || got != "stub-gh-token" {
 		t.Fatalf("token = %q, err = %v", got, err)
+	}
+}
+
+func TestGetManyPartialErrorsFailRefs(t *testing.T) {
+	resp := fmt.Sprintf(`{
+		"data": {"r0": {"pr9": null, "pr5": %s}},
+		"errors": [
+			{"type": "FORBIDDEN", "path": ["r0", "pr9"], "message": "SAML enforcement"},
+			{"type": "INTERNAL", "path": ["r0", "pr5", "commits", "nodes", 0], "message": "rollup timed out"}
+		]
+	}`, minimalPR(5))
+	p, _ := newProvider(t, func(w http.ResponseWriter, _ gqlRequest, _ int) { _, _ = w.Write([]byte(resp)) })
+	refs := []forge.ChangeRef{{Repo: alpha, Number: 9}, {Repo: alpha, Number: 5}}
+
+	got, err := p.GetMany(context.Background(), refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if f := got[refs[0]]; f.Err == nil || errors.Is(f.Err, forge.ErrNotFound) || !strings.Contains(f.Err.Error(), "SAML enforcement") {
+		t.Errorf("alpha#9 err = %v, want the FORBIDDEN error, not ErrNotFound", f.Err)
+	}
+	if f := got[refs[1]]; f.Err == nil || !strings.Contains(f.Err.Error(), "rollup timed out") {
+		t.Errorf("alpha#5 err = %v, want the nested error", f.Err)
+	}
+}
+
+func TestListOpenPartialErrorFails(t *testing.T) {
+	resp := `{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[null]}}},
+		"errors":[{"type":"FORBIDDEN","path":["repository","pullRequests","nodes",0],"message":"SAML enforcement"}]}`
+	p, _ := newProvider(t, func(w http.ResponseWriter, _ gqlRequest, _ int) { _, _ = w.Write([]byte(resp)) })
+	if _, err := p.ListOpen(context.Background(), alpha); err == nil {
+		t.Fatal("ListOpen err = nil, want the partial error")
+	}
+}
+
+func TestListOpenNullNodeFails(t *testing.T) {
+	resp := `{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false,"endCursor":""},"nodes":[null]}}}}`
+	p, _ := newProvider(t, func(w http.ResponseWriter, _ gqlRequest, _ int) { _, _ = w.Write([]byte(resp)) })
+	if _, err := p.ListOpen(context.Background(), alpha); err == nil {
+		t.Fatal("ListOpen err = nil, want an error for a null node")
+	}
+}
+
+func TestGraphQLRateLimitOnHTTP200(t *testing.T) {
+	p, _ := newProvider(t, func(w http.ResponseWriter, _ gqlRequest, _ int) {
+		w.Header().Set("X-RateLimit-Remaining", "0")
+		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(time.Hour).Unix(), 10))
+		_, _ = w.Write([]byte(`{"data":null,"errors":[{"type":"RATE_LIMITED","message":"API rate limit exceeded"}]}`))
+	})
+	var rl *forge.RateLimitError
+
+	ref := forge.ChangeRef{Repo: alpha, Number: 5}
+	got, err := p.GetMany(context.Background(), []forge.ChangeRef{ref})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !errors.As(got[ref].Err, &rl) {
+		t.Errorf("GetMany ref err = %v, want *forge.RateLimitError", got[ref].Err)
+	}
+	if _, err := p.ListOpen(context.Background(), alpha); !errors.As(err, &rl) {
+		t.Errorf("ListOpen err = %v, want *forge.RateLimitError", err)
+	}
+}
+
+func TestGetManySkipsInvalidNumbers(t *testing.T) {
+	p, fake := newProvider(t, aliasedResponse)
+	refs := []forge.ChangeRef{{Repo: alpha, Number: 5}, {Repo: alpha, Number: -1}, {Repo: alpha, Number: 1 << 40}}
+
+	got, err := p.GetMany(context.Background(), refs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	posts := fake.posts()
+	if len(posts) != 1 || !strings.Contains(posts[0].Query, "pr5:") || strings.Contains(posts[0].Query, "pr-1") || strings.Contains(posts[0].Query, "1099511627776") {
+		t.Fatalf("posts = %+v, want one request containing only pr5", posts)
+	}
+	if f := got[refs[0]]; f.Err != nil || f.Change.Number != 5 {
+		t.Errorf("alpha#5 = %+v", f)
+	}
+	for _, r := range refs[1:] {
+		if !errors.Is(got[r].Err, forge.ErrNotFound) {
+			t.Errorf("%v err = %v, want ErrNotFound", r, got[r].Err)
+		}
+	}
+}
+
+func TestSearchClampsLimit(t *testing.T) {
+	for _, tc := range []struct{ in, want int }{{0, 30}, {-4, 1}, {500, 100}, {25, 25}} {
+		p, fake := newProvider(t, serveFixture("search.json", t))
+		if _, err := p.Search(context.Background(), "q", tc.in); err != nil {
+			t.Fatal(err)
+		}
+		if posts := fake.posts(); len(posts) != 1 || !posts[0].hasVar(float64(tc.want)) {
+			t.Errorf("limit %d: variables = %v, want first=%d", tc.in, posts[0].Variables, tc.want)
+		}
+	}
+}
+
+func TestNewDefaultClientHasTimeout(t *testing.T) {
+	if got := New(Options{}).client.Timeout; got != 30*time.Second {
+		t.Errorf("default client Timeout = %v, want 30s", got)
 	}
 }

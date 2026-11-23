@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/clock"
+	"github.com/noamsto/forged/internal/forgetest"
 )
 
 func mustInvalidate(t *testing.T, c *Cache, k forge.Key) {
@@ -68,4 +70,58 @@ func TestInvalidateRepoOpenRefetchesListAndStalesEntries(t *testing.T) {
 
 	mustRead(t, c, nonMember, maxAge(time.Hour))
 	wantCalls(t, fake, "GetMany", 2)
+}
+
+// heldListOpen answers ListOpen from the snapshot taken at call entry, then
+// holds the answer until release closes.
+type heldListOpen struct {
+	*forgetest.Fake
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (h heldListOpen) ListOpen(ctx context.Context, r forge.RepoRef) ([]forge.Change, error) {
+	cs, err := h.Fake.ListOpen(ctx, r)
+	close(h.entered)
+	<-h.release
+	return cs, err
+}
+
+func TestInvalidateNotOverwrittenByEarlierStartedListFetch(t *testing.T) {
+	clk := clock.NewFake(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+	fake := forgetest.New()
+	held := heldListOpen{Fake: fake, entered: make(chan struct{}), release: make(chan struct{})}
+	o := DefaultOptions()
+	o.Clock = clk
+	o.BatchWindow = 0
+	c := New(map[string]forge.Provider{provKey: held}, o)
+	open := openChange(repoA, 1)
+	fake.SetChanges(repoA, []forge.Change{open})
+	k := forge.ChangeKey(repoA, 1)
+	mustRead(t, c, k, ReadOpts{})
+	ch, _ := mustSubscribe(t, c, Filter{Repo: repoA, Number: 1})
+
+	listDone := make(chan error, 1)
+	go func() {
+		_, err := c.Read(context.Background(), forge.RepoOpen(repoA), ReadOpts{})
+		listDone <- err
+	}()
+	<-held.entered // the list holds #1 open
+
+	clk.Advance(time.Second)
+	fake.SetChanges(repoA, []forge.Change{withState(open, forge.StateMerged)})
+	mustInvalidate(t, c, k)
+	close(held.release)
+	if err := <-listDone; err != nil {
+		t.Fatalf("list Read: %v", err)
+	}
+
+	if got := mustRead(t, c, k, ReadOpts{}).Changes[0].State; got != forge.StateMerged {
+		t.Fatalf("state after the earlier-started list stored = %s, want merged", got)
+	}
+	ev := recvEvent(t, ch)
+	if ev.Type != forge.EventStateChanged || ev.Old != "open" || ev.New != "merged" {
+		t.Fatalf("event = %+v, want state open→merged", ev)
+	}
+	wantNoEvent(t, ch)
 }

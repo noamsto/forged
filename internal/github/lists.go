@@ -3,6 +3,7 @@ package github
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -13,6 +14,9 @@ const (
 	listPageSize = 50
 	listCap      = 1000
 	byBranchSize = 100
+
+	defaultSearchLimit = 30
+	maxSearchLimit     = 100
 )
 
 const listQuery = `query($o:String!,$n:String!,$c:String){repository(owner:$o,name:$n){` +
@@ -46,21 +50,26 @@ func repoPullRequests(resp gqlResponse) (pullRequests, error) {
 			return pullRequests{}, fmt.Errorf("graphql: parse data: %w", err)
 		}
 	}
+	if err := firstError(resp.Errors); err != nil {
+		return pullRequests{}, err
+	}
 	if data.Repository == nil {
-		if err := firstError(resp.Errors); err != nil {
-			return pullRequests{}, err
-		}
 		return pullRequests{}, fmt.Errorf("%w: repository", forge.ErrNotFound)
 	}
 	return data.Repository.PullRequests, nil
 }
 
-func mapAll(repo forge.RepoRef, nodes []wirePR) []forge.Change {
+// mapAll rejects null nodes (they decode with Number 0): a list with holes
+// must not be cached as complete.
+func mapAll(repo forge.RepoRef, nodes []wirePR) ([]forge.Change, error) {
 	changes := make([]forge.Change, 0, len(nodes))
 	for _, w := range nodes {
+		if w.Number == 0 {
+			return nil, errors.New("graphql: null pull request node")
+		}
 		changes = append(changes, mapChange(repo, w))
 	}
-	return changes
+	return changes, nil
 }
 
 func (p *Provider) ListOpen(ctx context.Context, r forge.RepoRef) ([]forge.Change, error) {
@@ -75,7 +84,11 @@ func (p *Provider) ListOpen(ctx context.Context, r forge.RepoRef) ([]forge.Chang
 		if err != nil {
 			return nil, err
 		}
-		changes = append(changes, mapAll(r, page.Nodes)...)
+		nodes, err := mapAll(r, page.Nodes)
+		if err != nil {
+			return nil, err
+		}
+		changes = append(changes, nodes...)
 		if !page.PageInfo.HasNextPage {
 			break
 		}
@@ -94,13 +107,23 @@ func (p *Provider) ByBranch(ctx context.Context, r forge.RepoRef, branch string)
 	if err != nil {
 		return nil, err
 	}
-	return mapAll(r, page.Nodes), nil
+	return mapAll(r, page.Nodes)
+}
+
+func clampLimit(limit int) int {
+	if limit == 0 {
+		return defaultSearchLimit
+	}
+	return min(max(limit, 1), maxSearchLimit)
 }
 
 // Search skips nodes that are not pull requests (they decode as empty objects).
 func (p *Provider) Search(ctx context.Context, query string, limit int) ([]forge.Change, error) {
-	resp, err := p.post(ctx, searchQuery, map[string]any{"q": query, "n": limit})
+	resp, err := p.post(ctx, searchQuery, map[string]any{"q": query, "n": clampLimit(limit)})
 	if err != nil {
+		return nil, err
+	}
+	if err := firstError(resp.Errors); err != nil {
 		return nil, err
 	}
 	var data struct {
@@ -109,9 +132,6 @@ func (p *Provider) Search(ctx context.Context, query string, limit int) ([]forge
 		} `json:"search"`
 	}
 	if err := json.Unmarshal(resp.Data, &data); err != nil {
-		if ferr := firstError(resp.Errors); ferr != nil {
-			return nil, ferr
-		}
 		return nil, fmt.Errorf("graphql: parse data: %w", err)
 	}
 	var changes []forge.Change

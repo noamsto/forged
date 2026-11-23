@@ -1,6 +1,7 @@
 package ghcompat
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -67,10 +69,18 @@ func serve(args []string, stdout io.Writer, env func(string) string) error {
 		out = shaped
 	}
 
+	// Buffered so a mid-stream jq error leaves stdout empty before gh reruns.
+	var buf bytes.Buffer
 	if req.JQ != "" {
-		return ApplyJQ(stdout, out, req.JQ)
+		err = ApplyJQ(&buf, out, req.JQ)
+	} else {
+		err = Encode(&buf, out, isTTY(stdout))
 	}
-	return Encode(stdout, out, isTTY(stdout))
+	if err != nil {
+		return err
+	}
+	_, err = stdout.Write(buf.Bytes())
+	return err
 }
 
 func list(ctx context.Context, c *client.Client, repo forge.RepoRef, req Request, opts client.ReadOptions) ([]forge.Change, error) {
@@ -124,7 +134,22 @@ func fallback(args []string, stderr io.Writer, env func(string) string, cause er
 		_, _ = fmt.Fprintf(stderr, "forged: %v; gh not found for fallback: %v\n", cause, err)
 		return 1
 	}
-	err = syscall.Exec(path, append([]string{"gh"}, args...), os.Environ()) //nolint:gosec // G204: fixed gh invocation
+	err = syscall.Exec(path, append([]string{"gh"}, withoutMaxAge(args)...), os.Environ()) //nolint:gosec // G204: fixed gh invocation
 	_, _ = fmt.Fprintf(stderr, "forged: exec gh: %v\n", err)
 	return 1
+}
+
+// withoutMaxAge drops forged's own --max-age flag, which gh rejects.
+func withoutMaxAge(args []string) []string {
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		switch {
+		case args[i] == "--max-age":
+			i++
+		case strings.HasPrefix(args[i], "--max-age="):
+		default:
+			out = append(out, args[i])
+		}
+	}
+	return out
 }

@@ -1,11 +1,13 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -85,6 +87,21 @@ func rawGet(t *testing.T, sock, path string) int {
 		},
 	}}
 	resp, err := hc.Get("http://forged" + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	return resp.StatusCode
+}
+
+func rawPost(t *testing.T, sock, path, body string) int {
+	t.Helper()
+	hc := &http.Client{Transport: &http.Transport{
+		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
+		},
+	}}
+	resp, err := hc.Post("http://forged"+path, "application/json", bytes.NewBufferString(body))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -403,5 +420,70 @@ func TestUnavailableSocket(t *testing.T) {
 	_, err := cl.Status(context.Background())
 	if !errors.Is(err, client.ErrUnavailable) {
 		t.Fatalf("err = %v, want ErrUnavailable", err)
+	}
+}
+
+func TestChangeRejectsOutOfRangeNumber(t *testing.T) {
+	h := setup(t)
+	for _, n := range []string{"0", "-1", "2147483648"} {
+		if got := rawGet(t, h.sock, "/v1/change?repo=github.com/o/r&number="+n); got != http.StatusBadRequest {
+			t.Errorf("number=%s = %d, want 400", n, got)
+		}
+	}
+}
+
+func TestInvalidateRejectsInvalidKeys(t *testing.T) {
+	h := setup(t)
+	const r = `{"forge":"github","host":"github.com","owner":"o","name":"r"}`
+	bad := map[string]string{
+		"unknown kind":        `{"kind":"nope"}`,
+		"empty kind":          `{}`,
+		"no owner":            `{"kind":"repo-open","repo":{"forge":"github","host":"github.com","name":"r"}}`,
+		"no name":             `{"kind":"repo-open","repo":{"forge":"github","host":"github.com","owner":"o"}}`,
+		"change number 0":     `{"kind":"change","repo":` + r + `,"number":0}`,
+		"change too big":      `{"kind":"change","repo":` + r + `,"number":2147483648}`,
+		"branch empty":        `{"kind":"change-by-branch","repo":` + r + `}`,
+		"query empty":         `{"kind":"query","repo":{"forge":"github"},"limit":10}`,
+		"query limit 0":       `{"kind":"query","repo":{"forge":"github"},"query":"x","limit":0}`,
+		"query limit 101":     `{"kind":"query","repo":{"forge":"github"},"query":"x","limit":101}`,
+		"query without forge": `{"kind":"query","query":"x","limit":10}`,
+	}
+	for name, key := range bad {
+		if got := rawPost(t, h.sock, "/v1/invalidate", `{"key":`+key+`}`); got != http.StatusBadRequest {
+			t.Errorf("%s: POST = %d, want 400", name, got)
+		}
+	}
+}
+
+func TestSearchLimit(t *testing.T) {
+	h := setup(t)
+	h.fake.SetSearch("is:open", []forge.Change{change(2, "b")})
+	for limit, want := range map[string]int{"0": 400, "-1": 400, "101": 400, "100": 200, "1": 200} {
+		if got := rawGet(t, h.sock, "/v1/search?forge=github&q=is:open&limit="+limit); got != want {
+			t.Errorf("limit=%s = %d, want %d", limit, got, want)
+		}
+	}
+	if got := rawGet(t, h.sock, "/v1/search?forge=github&q=is:open"); got != 200 {
+		t.Errorf("absent limit = %d, want 200", got)
+	}
+}
+
+type limitProvider struct {
+	*forgetest.Fake
+	limit int
+}
+
+func (p *limitProvider) Search(ctx context.Context, q string, limit int) ([]forge.Change, error) {
+	p.limit = limit
+	return p.Fake.Search(ctx, q, limit)
+}
+
+func TestSearchAbsentLimitDefaultsTo30(t *testing.T) {
+	p := &limitProvider{Fake: forgetest.New()}
+	c := cache.New(map[string]forge.Provider{"github/github.com": p}, cache.DefaultOptions())
+	rec := httptest.NewRecorder()
+	server.New(c, "v").ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/v1/search?forge=github&q=is:open", nil))
+	if rec.Code != 200 || p.limit != 30 {
+		t.Fatalf("status = %d, provider limit = %d, want 200 and 30", rec.Code, p.limit)
 	}
 }

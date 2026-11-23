@@ -410,3 +410,53 @@ func TestWatchStreamEnded(t *testing.T) {
 		t.Errorf("stdout = %q", &stdout)
 	}
 }
+
+func TestServeShutdownEndsOpenWatch(t *testing.T) {
+	d := startDaemon(t)
+	repo := forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := client.New(d.sock).Subscribe(ctx, client.SubscribeOptions{Repo: repo}); err != nil {
+		t.Fatal(err)
+	}
+	start := time.Now()
+	if code := d.stop(t); code != 0 {
+		t.Fatalf("serve exit = %d; stderr: %s", code, d.stderr)
+	}
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("shutdown took %v with an open watch, want well under %v", took, shutdownTimeout)
+	}
+}
+
+func TestWatchEndedWithoutEventsHint(t *testing.T) {
+	dir, err := os.MkdirTemp("", "fc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "s.sock")
+	t.Setenv("FORGED_SOCKET", sock)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), ReadHeaderTimeout: time.Second}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"watch", "-R", "o/r"}, &stdout, &stderr); got != 1 {
+		t.Fatalf("exit = %d, want 1", got)
+	}
+	if strings.Contains(stderr.String(), "--since") {
+		t.Errorf("no events and no --since, but stderr hints a resume point: %q", &stderr)
+	}
+
+	stderr.Reset()
+	if got := run([]string{"watch", "-R", "o/r", "--since", "7"}, &stdout, &stderr); got != 1 {
+		t.Fatalf("exit = %d, want 1", got)
+	}
+	if !strings.Contains(stderr.String(), "reconnect with --since 7") {
+		t.Errorf("stderr = %q, want resume from --since 7", &stderr)
+	}
+}

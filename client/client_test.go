@@ -212,3 +212,26 @@ func TestSubscribeAgainstRealServerHonoursSince(t *testing.T) {
 		t.Fatal("no replayed event")
 	}
 }
+
+func TestDefaultSocketUnsetFailsUnavailable(t *testing.T) {
+	t.Setenv("FORGED_SOCKET", "")
+	t.Setenv("XDG_RUNTIME_DIR", "")
+	dir := shortDir(t)
+	if err := os.Mkdir(filepath.Join(dir, "forged"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("unix", filepath.Join(dir, "forged", "forged.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("{}"))
+	}), ReadHeaderTimeout: time.Second}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+	t.Chdir(dir)
+
+	if _, err := client.New("").Status(context.Background()); !errors.Is(err, client.ErrUnavailable) {
+		t.Fatalf("err = %v, want ErrUnavailable (dialled a path relative to the cwd)", err)
+	}
+}

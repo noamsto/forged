@@ -60,12 +60,17 @@ type Client struct {
 	hc *http.Client
 }
 
-// DefaultSocket returns $FORGED_SOCKET, else $XDG_RUNTIME_DIR/forged/forged.sock.
+// DefaultSocket returns $FORGED_SOCKET, else $XDG_RUNTIME_DIR/forged/forged.sock,
+// or "" when neither is set.
 func DefaultSocket() string {
 	if s := os.Getenv("FORGED_SOCKET"); s != "" {
 		return s
 	}
-	return filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "forged", "forged.sock")
+	dir := os.Getenv("XDG_RUNTIME_DIR")
+	if dir == "" {
+		return ""
+	}
+	return filepath.Join(dir, "forged", "forged.sock")
 }
 
 // New returns a client for the daemon at socket; empty means DefaultSocket().
@@ -75,6 +80,9 @@ func New(socket string) *Client {
 	}
 	return &Client{hc: &http.Client{Transport: &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+			if socket == "" {
+				return nil, errors.New("neither FORGED_SOCKET nor XDG_RUNTIME_DIR is set")
+			}
 			return (&net.Dialer{}).DialContext(ctx, "unix", socket)
 		},
 	}}}
@@ -119,9 +127,13 @@ func (c *Client) ByBranch(ctx context.Context, repo forge.RepoRef, branch string
 	return c.list(ctx, "/v1/changes", url.Values{"repo": {repo.String()}, "head": {branch}}, o)
 }
 
-// Search runs a forge search query.
+// Search runs a forge search query; a limit of 0 uses the daemon default.
 func (c *Client) Search(ctx context.Context, forgeName, q string, limit int, o ReadOptions) ([]forge.Change, error) {
-	return c.list(ctx, "/v1/search", url.Values{"forge": {forgeName}, "q": {q}, "limit": {strconv.Itoa(limit)}}, o)
+	v := url.Values{"forge": {forgeName}, "q": {q}}
+	if limit > 0 {
+		v.Set("limit", strconv.Itoa(limit))
+	}
+	return c.list(ctx, "/v1/search", v, o)
 }
 
 func (c *Client) list(ctx context.Context, path string, q url.Values, o ReadOptions) ([]forge.Change, error) {

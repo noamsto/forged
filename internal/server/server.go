@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -32,6 +33,11 @@ func New(c *cache.Cache, version string) http.Handler {
 	mux.HandleFunc("GET /v1/watch", s.watch)
 	return mux
 }
+
+const (
+	defaultSearchLimit = 30
+	maxSearchLimit     = 100
+)
 
 type badRequest struct{ error }
 
@@ -69,6 +75,10 @@ func (s *server) change(w http.ResponseWriter, r *http.Request) {
 		writeError(w, badf("invalid number %q", q.Get("number")))
 		return
 	}
+	if !validNumber(n) {
+		writeError(w, badf("invalid number %q", q.Get("number")))
+		return
+	}
 	s.read(w, r, forge.ChangeKey(repo, n))
 }
 
@@ -79,10 +89,10 @@ func (s *server) search(w http.ResponseWriter, r *http.Request) {
 		writeError(w, badf("forge and q are required"))
 		return
 	}
-	limit := 0
+	limit := defaultSearchLimit
 	if v := q.Get("limit"); v != "" {
 		var err error
-		if limit, err = strconv.Atoi(v); err != nil {
+		if limit, err = strconv.Atoi(v); err != nil || !validLimit(limit) {
 			writeError(w, badf("invalid limit %q", v))
 			return
 		}
@@ -112,6 +122,10 @@ func (s *server) invalidate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, badf("invalid body: %v", err))
 		return
 	}
+	if err := validateKey(body.Key); err != nil {
+		writeError(w, err)
+		return
+	}
 	if err := s.c.Invalidate(r.Context(), body.Key); err != nil {
 		writeError(w, err)
 		return
@@ -121,6 +135,32 @@ func (s *server) invalidate(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) status(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"version": s.version, "stats": s.c.Stats()})
+}
+
+func validNumber(n int) bool { return n >= 1 && n <= math.MaxInt32 }
+
+func validLimit(n int) bool { return n >= 1 && n <= maxSearchLimit }
+
+func validateKey(k forge.Key) error {
+	switch k.Kind {
+	case forge.KindRepoOpen, forge.KindChange, forge.KindByBranch:
+		if k.Repo.Owner == "" || k.Repo.Name == "" {
+			return badf("key needs repo owner and name")
+		}
+	case forge.KindQuery:
+		if k.Repo.Forge == "" || k.Query == "" || !validLimit(k.Limit) {
+			return badf("query key needs forge, query and limit 1..%d", maxSearchLimit)
+		}
+	default:
+		return badf("unknown key kind %q", k.Kind)
+	}
+	if k.Kind == forge.KindChange && !validNumber(k.Number) {
+		return badf("invalid change number %d", k.Number)
+	}
+	if k.Kind == forge.KindByBranch && k.Branch == "" {
+		return badf("by-branch key needs a branch")
+	}
+	return nil
 }
 
 func repoParam(q url.Values) (forge.RepoRef, error) {

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	ghtransport "github.com/bored-engineer/github-conditional-http-transport"
 	"github.com/bored-engineer/github-conditional-http-transport/memory"
@@ -13,10 +12,11 @@ import (
 	"github.com/noamsto/forged/forge"
 )
 
-// probeClient wraps the authenticated transport in the conditional-request cache.
-func probeClient(base *http.Client, auth http.RoundTripper) *http.Client {
+// probeClient puts auth outside the conditional-request cache: GitHub varies
+// ETags on Authorization, so the cache must see the header to revalidate.
+func probeClient(base *http.Client, rt http.RoundTripper, tokens *tokenCache) *http.Client {
 	c := *base
-	c.Transport = ghtransport.NewTransport(memory.NewStorage(), auth)
+	c.Transport = &authTransport{base: ghtransport.NewTransport(memory.NewStorage(), rt), tokens: tokens}
 	return &c
 }
 
@@ -43,10 +43,11 @@ func (p *Provider) Probe(ctx context.Context, r forge.RepoRef) (forge.ProbeResul
 	}
 	_, _ = io.Copy(io.Discard, resp.Body)
 
-	// The transport guesses an empty-array ETag when storage is empty; a match
-	// on that guess says nothing about the real list.
+	// With no stored response the transport guesses an empty-array ETag; a hit
+	// on that guess proves the list is empty, which is unchanged only against
+	// an earlier probe's baseline.
 	seen := p.markProbed(r)
-	hit := resp.Header.Get("X-Cache") == "HIT" && !strings.Contains(resp.Header.Get("Cache-Status"), "speculative")
+	hit := resp.Header.Get("X-Cache") == "HIT"
 	return forge.ProbeResult{Changed: !hit || !seen}, nil
 }
 

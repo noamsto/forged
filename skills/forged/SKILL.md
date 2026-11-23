@@ -62,7 +62,14 @@ register after a push. The final `--max-age 0` read decides whether CI is done.
 
 ### Reconnect
 
-Exit code 1 means the stream ended. stderr names the last `seq`; resume from it:
+Exit code 1 has two causes, told apart by stderr:
+
+- A `--since` seq on stderr: the stream ended. Resume from that seq.
+- No seq: the daemon is unavailable, or the stream ended before any event.
+  `watch` has no `gh` fallback, so poll `forged pr view … --max-age 0` at a
+  modest interval (tens of seconds) until the condition holds.
+
+Resume:
 
 ```fish
 forged watch -R noamsto/forged --pr 12 --event checks.completed --since 1769990000123456

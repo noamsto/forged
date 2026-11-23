@@ -43,10 +43,13 @@ func listenFromEnv(env func(string) string, pid int) (net.Listener, error) {
 }
 
 // Listen binds a private unix socket at path, replacing a stale socket file
-// and refusing when another process answers on it.
+// and refusing when another process answers on it or the path is not a socket.
 func Listen(path string) (net.Listener, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
+	}
+	if fi, err := os.Lstat(path); err == nil && fi.Mode().Type() != os.ModeSocket {
+		return nil, fmt.Errorf("%s exists and is not a socket", path)
 	}
 	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
 		_ = c.Close()
@@ -55,5 +58,13 @@ func Listen(path string) (net.Listener, error) {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
-	return net.Listen("unix", path)
+	ln, err := net.Listen("unix", path)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Chmod(path, 0o600); err != nil {
+		_ = ln.Close()
+		return nil, err
+	}
+	return ln, nil
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"strings"
 
@@ -81,7 +82,15 @@ func buildBatchQuery(groups []repoGroup) (string, map[string]any) {
 // is present in the result; failures are per ref, so the error is always nil.
 func (p *Provider) GetMany(ctx context.Context, refs []forge.ChangeRef) (map[forge.ChangeRef]forge.Fetched, error) {
 	out := make(map[forge.ChangeRef]forge.Fetched, len(refs))
-	for _, chunk := range chunkRefs(refs, maxBatch) {
+	valid := make([]forge.ChangeRef, 0, len(refs))
+	for _, r := range refs {
+		if r.Number < 1 || r.Number > math.MaxInt32 {
+			out[r] = forge.Fetched{Err: forge.ErrNotFound}
+			continue
+		}
+		valid = append(valid, r)
+	}
+	for _, chunk := range chunkRefs(valid, maxBatch) {
 		p.fetchChunk(ctx, chunk, out)
 	}
 	return out, nil
@@ -138,9 +147,10 @@ func (p *Provider) fetchChunk(ctx context.Context, chunk []repoGroup, out map[fo
 			continue
 		}
 		for _, n := range g.Numbers {
-			raw := prs[fmt.Sprintf("pr%d", n)]
-			if len(raw) == 0 || string(raw) == "null" {
-				set(g, n, forge.Fetched{Err: forge.ErrNotFound})
+			prAlias := fmt.Sprintf("pr%d", n)
+			raw := prs[prAlias]
+			if err := refError(resp.Errors, alias, prAlias, len(raw) == 0 || string(raw) == "null"); err != nil {
+				set(g, n, forge.Fetched{Err: err})
 				continue
 			}
 			var w wirePR
@@ -166,4 +176,30 @@ func repoErrorMessage(errs []gqlError, alias string) string {
 		}
 	}
 	return cmp.Or(unscoped, "repository not resolved")
+}
+
+// refError reports why one aliased pull request failed. A null node is
+// ErrNotFound only when GraphQL said NOT_FOUND for exactly that alias; any other
+// error under the alias fails the ref, since a partly-null node would otherwise
+// be stored as real data.
+func refError(errs []gqlError, repoAlias, prAlias string, null bool) error {
+	var first *gqlError
+	for i, e := range errs {
+		if len(e.Path) < 2 || e.Path[0] != repoAlias || e.Path[1] != prAlias {
+			continue
+		}
+		if null && len(e.Path) == 2 && e.Type == "NOT_FOUND" {
+			return fmt.Errorf("%w: %s", forge.ErrNotFound, e.Message)
+		}
+		if first == nil {
+			first = &errs[i]
+		}
+	}
+	switch {
+	case first != nil:
+		return fmt.Errorf("graphql: %s", first.Message)
+	case null:
+		return errors.New("graphql: pull request not resolved")
+	}
+	return nil
 }

@@ -271,3 +271,27 @@ func TestReadListResolvesMembersAtReadTime(t *testing.T) {
 		t.Fatalf("FetchedAt = %v, want oldest %v", res.FetchedAt, t0)
 	}
 }
+
+func TestReadHungUpstreamEndsAtFetchTimeout(t *testing.T) {
+	for _, k := range []forge.Key{forge.ChangeKey(repoA, 1), forge.RepoOpen(repoA)} {
+		t.Run(k.String(), func(t *testing.T) {
+			c, _, fake := newTestCache(t, func(o *Options) { o.FetchTimeout = 20 * time.Millisecond })
+			fake.Gate()
+			t.Cleanup(fake.Release)
+
+			done := make(chan error, 1)
+			go func() {
+				_, err := c.Read(context.Background(), k, ReadOpts{})
+				done <- err
+			}()
+			select {
+			case err := <-done:
+				if !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("Read err = %v, want context.DeadlineExceeded", err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("Read of a hung upstream still blocked after 5s")
+			}
+		})
+	}
+}
