@@ -331,7 +331,7 @@ func TestWatchSinceReplays(t *testing.T) {
 	c.State = forge.StateMerged
 	h.update(t, c)
 
-	ch, err := h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: ptr(h.seed())})
+	ch, err := h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: new(h.seed())})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -340,7 +340,7 @@ func TestWatchSinceReplays(t *testing.T) {
 		t.Fatalf("replay = %+v, %+v", first, second)
 	}
 
-	ch, err = h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: ptr(first.Seq)})
+	ch, err = h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: new(first.Seq)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,7 +357,7 @@ func TestWatchSinceBelowRingResyncsFirst(t *testing.T) {
 	c.State = forge.StateMerged
 	h.update(t, c)
 
-	ch, err := h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: ptr(h.seed())})
+	ch, err := h.cl.Subscribe(watchCtx(t), client.SubscribeOptions{Repo: repo, Number: 1, Since: new(h.seed())})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,8 +383,6 @@ func TestWatchRejectsBadParams(t *testing.T) {
 		}
 	}
 }
-
-func ptr[T any](v T) *T { return &v }
 
 func recv(t *testing.T, ch <-chan forge.ChangeEvent) forge.ChangeEvent {
 	t.Helper()

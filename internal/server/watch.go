@@ -35,7 +35,7 @@ func (s *server) watch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if v := q.Get("types"); v != "" {
-		for _, name := range strings.Split(v, ",") {
+		for name := range strings.SplitSeq(v, ",") {
 			t := forge.EventType(name)
 			if !slices.Contains(watchableTypes, t) {
 				writeError(w, badf("unknown event type %q", name))
