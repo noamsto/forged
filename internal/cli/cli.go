@@ -23,6 +23,8 @@ commands:
   serve [--socket PATH] [--snapshot PATH] [--lease-ttl D] [--hot-interval D] [--warm-interval D]
   pr view|list ...                gh-compatible, served from the daemon
   invalidate [host/]owner/repo[#N]  refetch a repo's open list or one change now
+  watch [-R owner/repo] [--pr N] [--event t1,t2] [--since SEQ]
+                                  print change events as JSON lines until interrupted
   status                          print daemon version and stats as JSON
   version
   help
@@ -51,6 +53,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return ghcompat.Run(args, stdout, stderr, os.Getenv)
 	case "invalidate":
 		return invalidate(args[1:], stderr)
+	case "watch":
+		return watch(args[1:], stdout, stderr)
 	case "status":
 		return status(stdout, stderr)
 	default:

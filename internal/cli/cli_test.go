@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,7 +43,7 @@ func TestUsageListsSubcommands(t *testing.T) {
 	if got := run(nil, &stdout, &stderr); got != 2 {
 		t.Fatalf("exit = %d, want 2", got)
 	}
-	for _, sub := range []string{"serve", "pr", "invalidate", "status", "version", "help"} {
+	for _, sub := range []string{"serve", "pr", "invalidate", "watch", "status", "version", "help"} {
 		if !strings.Contains(stderr.String(), sub) {
 			t.Errorf("usage missing %q: %s", sub, stderr.String())
 		}
@@ -210,5 +212,201 @@ func TestClientCommandsWithoutDaemon(t *testing.T) {
 		if got := run(args, &stdout, &stderr); got != 1 {
 			t.Errorf("run(%v) = %d, want 1", args, got)
 		}
+	}
+}
+
+// startWatch runs `watch args…` against the current daemon and returns a stop
+// func that cancels it and yields the exit code.
+func startWatch(t *testing.T, args ...string) (out, errBuf *syncBuffer, stop func() int) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	old := watchParent
+	watchParent = ctx
+	t.Cleanup(func() { watchParent = old })
+	out, errBuf = &syncBuffer{}, &syncBuffer{}
+	done := make(chan int, 1)
+	go func() { done <- run(append([]string{"watch"}, args...), out, errBuf) }()
+	t.Cleanup(cancel)
+	return out, errBuf, func() int {
+		t.Helper()
+		cancel()
+		select {
+		case code := <-done:
+			return code
+		case <-time.After(10 * time.Second):
+			t.Fatal("watch did not return after cancel")
+			return -1
+		}
+	}
+}
+
+// driveUntil flips the checks rollup of every change in the fake and
+// invalidates until done reports true.
+func driveUntil(t *testing.T, d *daemon, done func() bool, numbers ...int) {
+	t.Helper()
+	repo := forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
+	cl := client.New(d.sock)
+	deadline := time.Now().Add(5 * time.Second)
+	for i := 0; !done(); i++ {
+		if time.Now().After(deadline) {
+			t.Fatalf("watch output never satisfied the test; stderr: %s", d.stderr)
+		}
+		rollup := forge.RollupPass
+		if i%2 == 1 {
+			rollup = forge.RollupFail
+		}
+		var cs []forge.Change
+		for _, n := range numbers {
+			c := forge.Change{Repo: repo, Number: n, State: forge.StateOpen, Title: "t"}
+			c.Checks.Rollup = rollup
+			cs = append(cs, c)
+		}
+		d.fake.SetChanges(repo, cs)
+		if err := cl.Invalidate(context.Background(), forge.RepoOpen(repo)); err != nil {
+			t.Fatal(err)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+func decodeEvents(t *testing.T, out *syncBuffer) []forge.ChangeEvent {
+	t.Helper()
+	var evs []forge.ChangeEvent
+	for line := range strings.SplitSeq(strings.TrimSpace(out.String()), "\n") {
+		var ev forge.ChangeEvent
+		if err := json.Unmarshal([]byte(line), &ev); err != nil {
+			t.Fatalf("not a JSON line %q: %v", line, err)
+		}
+		evs = append(evs, ev)
+	}
+	return evs
+}
+
+func baseline(t *testing.T, d *daemon, repo forge.RepoRef, numbers ...int) {
+	t.Helper()
+	var cs []forge.Change
+	for _, n := range numbers {
+		cs = append(cs, forge.Change{Repo: repo, Number: n, State: forge.StateOpen, Title: "t"})
+	}
+	d.fake.SetChanges(repo, cs)
+	if err := client.New(d.sock).Invalidate(context.Background(), forge.RepoOpen(repo)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestWatchFiltersByPRAndType(t *testing.T) {
+	d := startDaemon(t)
+	repo := forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
+	baseline(t, d, repo, 5, 6)
+	out, errBuf, stop := startWatch(t, "-R", "o/r", "--pr", "5", "--event", "checks.completed")
+	driveUntil(t, d, func() bool { return out.String() != "" }, 5, 6)
+	if code := stop(); code != 0 {
+		t.Fatalf("exit = %d; stderr: %s", code, errBuf)
+	}
+	for _, ev := range decodeEvents(t, out) {
+		if ev.Number != 5 || ev.Type != forge.EventChecksCompleted {
+			t.Errorf("unexpected event %+v", ev)
+		}
+	}
+	d.stop(t)
+}
+
+func TestWatchRepoWideIncludesOtherNumbers(t *testing.T) {
+	d := startDaemon(t)
+	repo := forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
+	baseline(t, d, repo, 5, 6)
+	out, errBuf, stop := startWatch(t, "--repo", "o/r")
+	driveUntil(t, d, func() bool {
+		seen := map[int]bool{}
+		if out.String() != "" {
+			for _, ev := range decodeEvents(t, out) {
+				seen[ev.Number] = true
+			}
+		}
+		return seen[5] && seen[6]
+	}, 5, 6)
+	if code := stop(); code != 0 {
+		t.Fatalf("exit = %d; stderr: %s", code, errBuf)
+	}
+	d.stop(t)
+}
+
+func TestWatchUsageErrors(t *testing.T) {
+	d := startDaemon(t)
+	t.Setenv("GH_REPO", "")
+	t.Chdir(t.TempDir())
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{"unknown event", []string{"watch", "-R", "o/r", "--event", "bogus"}},
+		{"resync is not filterable", []string{"watch", "-R", "o/r", "--event", "resync"}},
+		{"no repo", []string{"watch"}},
+		{"bad repo", []string{"watch", "-R", "justowner"}},
+		{"extra arg", []string{"watch", "-R", "o/r", "x"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if got := run(tc.args, &stdout, &stderr); got != 2 {
+				t.Fatalf("exit = %d, want 2; stderr: %s", got, &stderr)
+			}
+		})
+	}
+	d.stop(t)
+}
+
+func TestWatchWithoutDaemonOrHost(t *testing.T) {
+	dir, err := os.MkdirTemp("", "fc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	t.Setenv("FORGE_CACHE_SOCKET", filepath.Join(dir, "none.sock"))
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"watch", "-R", "o/r"}, &stdout, &stderr); got != 1 {
+		t.Fatalf("daemon down: exit = %d, want 1", got)
+	}
+
+	d := startDaemon(t)
+	stdout.Reset()
+	stderr.Reset()
+	if got := run([]string{"watch", "-R", "gitlab.com/o/r"}, &stdout, &stderr); got != 1 {
+		t.Fatalf("unsupported host: exit = %d, want 1; stderr: %s", got, &stderr)
+	}
+	d.stop(t)
+}
+
+func TestWatchStreamEnded(t *testing.T) {
+	dir, err := os.MkdirTemp("", "fc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	sock := filepath.Join(dir, "s.sock")
+	t.Setenv("FORGE_CACHE_SOCKET", sock)
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotSince string
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotSince = r.URL.Query().Get("since")
+		_ = json.NewEncoder(w).Encode(forge.ChangeEvent{Seq: 42, Type: forge.EventStateChanged})
+	}), ReadHeaderTimeout: time.Second}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	var stdout, stderr bytes.Buffer
+	if got := run([]string{"watch", "-R", "o/r", "--since", "0"}, &stdout, &stderr); got != 1 {
+		t.Fatalf("exit = %d, want 1; stderr: %s", got, &stderr)
+	}
+	if !strings.Contains(stderr.String(), "stream ended after seq 42; reconnect with --since 42") {
+		t.Errorf("stderr = %q", &stderr)
+	}
+	if gotSince != "0" {
+		t.Errorf("since = %q, want 0", gotSince)
+	}
+	if evs := decodeEvents(t, &syncBuffer{b: stdout}); len(evs) != 1 || evs[0].Seq != 42 {
+		t.Errorf("stdout = %q", &stdout)
 	}
 }
