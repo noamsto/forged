@@ -428,6 +428,43 @@ func TestServeShutdownEndsOpenWatch(t *testing.T) {
 	}
 }
 
+func TestServeShutdownLetsInFlightChangeFinish(t *testing.T) {
+	d := startDaemon(t)
+	repo := forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
+	d.fake.Gate()
+	maxAge := time.Duration(0)
+	type result struct {
+		c   forge.Change
+		err error
+	}
+	res := make(chan result, 1)
+	go func() {
+		c, err := client.New(d.sock).Change(context.Background(), repo, 5, client.ReadOptions{MaxAge: &maxAge})
+		res <- result{c, err}
+	}()
+	select {
+	case <-d.fake.Entered():
+	case <-time.After(5 * time.Second):
+		t.Fatal("upstream fetch never started")
+	}
+
+	d.cancel()
+	time.Sleep(200 * time.Millisecond)
+	d.fake.Release()
+
+	select {
+	case r := <-res:
+		if r.err != nil || r.c.Number != 5 {
+			t.Fatalf("in-flight change = %+v, %v; want it to finish during shutdown", r.c, r.err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("in-flight change never returned")
+	}
+	if code := d.stop(t); code != 0 {
+		t.Fatalf("serve exit = %d; stderr: %s", code, d.stderr)
+	}
+}
+
 func TestWatchEndedWithoutEventsHint(t *testing.T) {
 	dir, err := os.MkdirTemp("", "fc")
 	if err != nil {

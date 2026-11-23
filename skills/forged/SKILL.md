@@ -62,12 +62,15 @@ register after a push. The final `--max-age 0` read decides whether CI is done.
 
 ### Reconnect
 
-Exit code 1 has two causes, told apart by stderr:
+Exit code 1 has three causes, told apart by the last stderr line:
 
-- A `--since` seq on stderr: the stream ended. Resume from that seq.
-- No seq: the daemon is unavailable, or the stream ended before any event.
-  `watch` has no `gh` fallback, so poll `forged pr view … --max-age 0` at a
-  modest interval (tens of seconds) until the condition holds.
+- `stream ended after seq N; reconnect with --since N`: resume from that seq.
+- `stream ended before any event`: the daemon was reachable (it may have
+  restarted) but no cursor exists. Rerun the same watch without `--since`, then
+  redo the read step.
+- Any other `forged: …` error (a dial failure): the daemon is unavailable.
+  `watch` has no `gh` fallback, so poll `forged pr view … --max-age 0` every few
+  tens of seconds until the condition holds, and retry `watch` now and then.
 
 Resume:
 

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/noamsto/forged/forge"
@@ -19,11 +20,23 @@ import (
 type server struct {
 	c       *cache.Cache
 	version string
+	closing chan struct{}
+	once    sync.Once
 }
 
+// Handler is the daemon's HTTP handler.
+type Handler struct {
+	http.Handler
+	s *server
+}
+
+// EndWatches ends every open watch stream and any started later, leaving other
+// in-flight requests to finish. It is safe to call more than once.
+func (h *Handler) EndWatches() { h.s.once.Do(func() { close(h.s.closing) }) }
+
 // New returns the daemon's HTTP handler.
-func New(c *cache.Cache, version string) http.Handler {
-	s := &server{c: c, version: version}
+func New(c *cache.Cache, version string) *Handler {
+	s := &server{c: c, version: version, closing: make(chan struct{})}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/changes", s.changes)
 	mux.HandleFunc("GET /v1/change", s.change)
@@ -31,7 +44,7 @@ func New(c *cache.Cache, version string) http.Handler {
 	mux.HandleFunc("POST /v1/invalidate", s.invalidate)
 	mux.HandleFunc("GET /v1/status", s.status)
 	mux.HandleFunc("GET /v1/watch", s.watch)
-	return mux
+	return &Handler{Handler: mux, s: s}
 }
 
 const (

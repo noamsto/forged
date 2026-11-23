@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"syscall"
 	"time"
 )
 
@@ -58,7 +59,11 @@ func Listen(path string) (net.Listener, error) {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
+	// Single-threaded startup makes the process-wide umask swap safe; it keeps
+	// the socket from ever being group-connectable before the chmod.
+	old := syscall.Umask(0o077)
 	ln, err := net.Listen("unix", path)
+	syscall.Umask(old)
 	if err != nil {
 		return nil, err
 	}

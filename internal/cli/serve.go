@@ -84,11 +84,9 @@ func serve(args []string, stderr io.Writer) int {
 		}
 	}()
 
-	srv := &http.Server{
-		Handler:           server.New(c, version),
-		ReadHeaderTimeout: 10 * time.Second,
-		BaseContext:       func(net.Listener) context.Context { return ctx },
-	}
+	h := server.New(c, version)
+	srv := &http.Server{Handler: h, ReadHeaderTimeout: 10 * time.Second}
+	srv.RegisterOnShutdown(h.EndWatches)
 	serveErr := make(chan error, 1)
 	log.Info("listening", "addr", ln.Addr().String())
 	go func() { serveErr <- srv.Serve(ln) }()

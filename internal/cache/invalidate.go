@@ -34,7 +34,7 @@ func (c *Cache) Invalidate(ctx context.Context, k forge.Key) error {
 	}
 	c.mu.Unlock()
 
-	return c.flight(ctx, "invalidate:"+k.String(), func(fctx context.Context) error {
+	return c.flight(ctx, "invalidate:"+k.String(), c.fetchTimeout(k), func(fctx context.Context) error {
 		if k.IsList() {
 			return c.fetchList(fctx, name, k)
 		}

@@ -273,9 +273,19 @@ func TestReadListResolvesMembersAtReadTime(t *testing.T) {
 }
 
 func TestReadHungUpstreamEndsAtFetchTimeout(t *testing.T) {
-	for _, k := range []forge.Key{forge.ChangeKey(repoA, 1), forge.RepoOpen(repoA)} {
-		t.Run(k.String(), func(t *testing.T) {
-			c, _, fake := newTestCache(t, func(o *Options) { o.FetchTimeout = 20 * time.Millisecond })
+	short := func(o *Options) { o.FetchTimeout, o.ListFetchTimeout = 20*time.Millisecond, time.Hour }
+	shortList := func(o *Options) { o.FetchTimeout, o.ListFetchTimeout = time.Hour, 20*time.Millisecond }
+	for _, tc := range []struct {
+		k   forge.Key
+		opt func(*Options)
+	}{
+		{forge.ChangeKey(repoA, 1), short},
+		{forge.RepoOpen(repoA), shortList},
+		{forge.ByBranch(repoA, "main"), shortList},
+	} {
+		t.Run(tc.k.String(), func(t *testing.T) {
+			k := tc.k
+			c, _, fake := newTestCache(t, tc.opt)
 			fake.Gate()
 			t.Cleanup(fake.Release)
 

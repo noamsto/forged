@@ -254,7 +254,7 @@ func (c *Cache) pollList(ctx context.Context, name string, k forge.Key) {
 	if c.isPaused(name) {
 		return
 	}
-	err := c.flight(ctx, k.String(), func(fctx context.Context) error {
+	err := c.flight(ctx, k.String(), c.o.ListFetchTimeout, func(fctx context.Context) error {
 		return c.fetchList(fctx, name, k)
 	})
 	if err == nil {

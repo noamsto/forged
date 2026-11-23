@@ -77,6 +77,8 @@ func (s *server) watch(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-s.closing:
+			return
 		case ev, ok := <-events:
 			if !ok || !send(ev) {
 				return

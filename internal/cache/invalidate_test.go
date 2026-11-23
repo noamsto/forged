@@ -125,3 +125,71 @@ func TestInvalidateNotOverwrittenByEarlierStartedListFetch(t *testing.T) {
 	}
 	wantNoEvent(t, ch)
 }
+
+// heldGetMany is heldListOpen whose GetMany likewise answers from its entry
+// snapshot and holds until gmRelease closes.
+type heldGetMany struct {
+	heldListOpen
+	gmEntered chan struct{}
+	gmRelease chan struct{}
+}
+
+func (h heldGetMany) GetMany(ctx context.Context, refs []forge.ChangeRef) (map[forge.ChangeRef]forge.Fetched, error) {
+	got, err := h.Fake.GetMany(ctx, refs)
+	close(h.gmEntered)
+	<-h.gmRelease
+	return got, err
+}
+
+func TestInvalidateNotDroppedByEarlierStartedListFinishingFirst(t *testing.T) {
+	clk := clock.NewFake(time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC))
+	fake := forgetest.New()
+	held := heldGetMany{
+		heldListOpen: heldListOpen{Fake: fake, entered: make(chan struct{}), release: make(chan struct{})},
+		gmEntered:    make(chan struct{}),
+		gmRelease:    make(chan struct{}),
+	}
+	o := DefaultOptions()
+	o.Clock = clk
+	o.BatchWindow = 0
+	c := New(map[string]forge.Provider{provKey: held}, o)
+	open := openChange(repoA, 1)
+	fake.SetChanges(repoA, []forge.Change{open})
+	k := forge.ChangeKey(repoA, 1)
+	c.mu.Lock()
+	c.store(clk.Now(), clk.Now(), []forge.Change{open})
+	c.mu.Unlock()
+	ch, _ := mustSubscribe(t, c, Filter{Repo: repoA, Number: 1})
+
+	listDone := make(chan error, 1)
+	go func() {
+		_, err := c.Read(context.Background(), forge.RepoOpen(repoA), ReadOpts{})
+		listDone <- err
+	}()
+	<-held.entered // t0: the list holds #1 open
+
+	clk.Advance(time.Second)
+	fake.SetChanges(repoA, []forge.Change{withState(open, forge.StateMerged)})
+	invDone := make(chan error, 1)
+	go func() { invDone <- c.Invalidate(context.Background(), k) }()
+	<-held.gmEntered // t1: GetMany holds #1 merged
+
+	clk.Advance(time.Second) // t2
+	close(held.release)
+	if err := <-listDone; err != nil {
+		t.Fatalf("list Read: %v", err)
+	}
+	close(held.gmRelease)
+	if err := <-invDone; err != nil {
+		t.Fatalf("Invalidate: %v", err)
+	}
+
+	if got := mustRead(t, c, k, ReadOpts{}).Changes[0].State; got != forge.StateMerged {
+		t.Fatalf("state after the later-started invalidate stored = %s, want merged", got)
+	}
+	ev := recvEvent(t, ch)
+	if ev.Type != forge.EventStateChanged || ev.Old != "open" || ev.New != "merged" {
+		t.Fatalf("event = %+v, want state open→merged", ev)
+	}
+	wantNoEvent(t, ch)
+}

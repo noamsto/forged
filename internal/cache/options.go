@@ -19,27 +19,31 @@ type Options struct {
 	BatchWindow   time.Duration
 	Tick          time.Duration
 	MaxBackoff    time.Duration
-	FetchTimeout  time.Duration // bounds each shared upstream call
-	EventBuffer   int
-	Clock         clock.Clock
+	FetchTimeout  time.Duration // bounds each shared change fetch
+	// ListFetchTimeout bounds each shared list fetch, which may page through
+	// many sequential requests.
+	ListFetchTimeout time.Duration
+	EventBuffer      int
+	Clock            clock.Clock
 }
 
 func DefaultOptions() Options {
 	return Options{
-		DefaultMaxAge: 30 * time.Second,
-		NegativeTTL:   15 * time.Second,
-		TerminalTTL:   time.Hour,
-		LeaseTTL:      10 * time.Minute,
-		HotInterval:   25 * time.Second,
-		HotHold:       5 * time.Minute,
-		WarmInterval:  2 * time.Minute,
-		WarmMaxAge:    10 * time.Minute,
-		EvictAfter:    time.Hour,
-		BatchWindow:   10 * time.Millisecond,
-		Tick:          time.Second,
-		MaxBackoff:    10 * time.Minute,
-		FetchTimeout:  45 * time.Second,
-		EventBuffer:   4096,
-		Clock:         clock.Real{},
+		DefaultMaxAge:    30 * time.Second,
+		NegativeTTL:      15 * time.Second,
+		TerminalTTL:      time.Hour,
+		LeaseTTL:         10 * time.Minute,
+		HotInterval:      25 * time.Second,
+		HotHold:          5 * time.Minute,
+		WarmInterval:     2 * time.Minute,
+		WarmMaxAge:       10 * time.Minute,
+		EvictAfter:       time.Hour,
+		BatchWindow:      10 * time.Millisecond,
+		Tick:             time.Second,
+		MaxBackoff:       10 * time.Minute,
+		FetchTimeout:     45 * time.Second,
+		ListFetchTimeout: 5 * time.Minute,
+		EventBuffer:      4096,
+		Clock:            clock.Real{},
 	}
 }

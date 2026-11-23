@@ -54,6 +54,25 @@ func TestSnapshotRoundTripHonoursOriginalFetchTime(t *testing.T) {
 	wantCalls(t, fake, "GetMany", 2)
 }
 
+func TestSnapshotLoadedAfterClockStepBackStillStores(t *testing.T) {
+	c, clk, fake := newTestCache(t)
+	open := openChange(repoA, 1)
+	fake.SetChanges(repoA, []forge.Change{open})
+	k := forge.ChangeKey(repoA, 1)
+	mustRead(t, c, k, ReadOpts{})
+	path := saveSnapshot(t, c)
+
+	c2 := newPeerCache(clock.NewFake(clk.Now().Add(-time.Hour)), fake)
+	if err := c2.LoadSnapshot(path); err != nil {
+		t.Fatalf("LoadSnapshot: %v", err)
+	}
+	fake.SetChanges(repoA, []forge.Change{withState(open, forge.StateMerged)})
+	mustInvalidate(t, c2, k)
+	if got := mustRead(t, c2, k, ReadOpts{}).Changes[0].State; got != forge.StateMerged {
+		t.Fatalf("state after a fetch older than the snapshot time = %s, want merged", got)
+	}
+}
+
 func TestSnapshotKeepsNegativeEntries(t *testing.T) {
 	c, clk, fake := newTestCache(t)
 	k := forge.ChangeKey(repoA, 9)

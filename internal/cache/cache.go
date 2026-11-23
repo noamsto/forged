@@ -29,10 +29,13 @@ type Result struct {
 }
 
 type changeEntry struct {
-	val        forge.Change
-	ok         bool // false with a non-zero fetchedAt = negative (absent upstream)
-	fetchedAt  time.Time
-	fullAt     time.Time // last real fetch; a probe revalidation bumps only fetchedAt
+	val       forge.Change
+	ok        bool // false with a non-zero fetchedAt = negative (absent upstream)
+	fetchedAt time.Time
+	fullAt    time.Time // last real fetch; a probe revalidation bumps only fetchedAt
+	// wroteStart is when the fetch whose result is stored started. It orders
+	// racing fetches and is never snapshotted, so a loaded entry accepts any.
+	wroteStart time.Time
 	lastRead   time.Time
 	loadedAt   time.Time // snapshot load time: delays eviction without leasing
 	hotUntil   time.Time
@@ -48,6 +51,7 @@ type listEntry struct {
 	refs          []forge.ChangeRef
 	listFetchedAt time.Time
 	fullAt        time.Time
+	wroteStart    time.Time
 	lastRead      time.Time
 	loadedAt      time.Time
 	poll
@@ -136,11 +140,11 @@ func (c *Cache) Read(ctx context.Context, k forge.Key, o ReadOpts) (Result, erro
 	switch {
 	case fresh:
 	case len(staleMembers) > 0:
-		err = c.flight(ctx, "members:"+k.String(), func(context.Context) error {
+		err = c.flight(ctx, "members:"+k.String(), c.o.FetchTimeout, func(context.Context) error {
 			return c.fetchChanges(name, staleMembers)
 		})
 	default:
-		err = c.flight(ctx, k.String(), func(fctx context.Context) error {
+		err = c.flight(ctx, k.String(), c.fetchTimeout(k), func(fctx context.Context) error {
 			if k.IsList() {
 				return c.fetchList(fctx, name, k)
 			}
@@ -297,12 +301,12 @@ func (c *Cache) staleMembers(k forge.Key, maxAge time.Duration) []forge.ChangeRe
 	return stale
 }
 
-// flight runs fn once per key across concurrent callers. The shared fetch
-// runs detached from any one reader's ctx so a cancelling reader cannot fail
-// the others that joined it.
-func (c *Cache) flight(ctx context.Context, key string, fn func(context.Context) error) error {
+// flight runs fn once per key across concurrent callers, bounded by timeout.
+// The shared fetch runs detached from any one reader's ctx so a cancelling
+// reader cannot fail the others that joined it.
+func (c *Cache) flight(ctx context.Context, key string, timeout time.Duration, fn func(context.Context) error) error {
 	ch := c.flights.DoChan(key, func() (any, error) {
-		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), c.o.FetchTimeout)
+		fctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), timeout)
 		defer cancel()
 		return nil, fn(fctx)
 	})
@@ -312,6 +316,13 @@ func (c *Cache) flight(ctx context.Context, key string, fn func(context.Context)
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func (c *Cache) fetchTimeout(k forge.Key) time.Duration {
+	if k.IsList() {
+		return c.o.ListFetchTimeout
+	}
+	return c.o.FetchTimeout
 }
 
 // fetchChanges fetches refs through the provider's batcher and applies each
@@ -402,11 +413,11 @@ func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
 		c.staleDropped(start, k.Repo, refs)
 	}
 	e := c.listEntry(k)
-	if e.fullAt.After(start) {
+	if start.Before(e.wroteStart) {
 		return nil
 	}
 	e.refs = refs
-	e.listFetchedAt, e.fullAt = now, now
+	e.listFetchedAt, e.fullAt, e.wroteStart = now, now, start
 	e.backoff = 0
 	return nil
 }
@@ -416,7 +427,7 @@ func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
 // refetches. Requires c.mu.
 func (c *Cache) staleDropped(start time.Time, r forge.RepoRef, open []forge.ChangeRef) {
 	for k, e := range c.changes {
-		if k.Repo != r || !e.ok || !e.val.IsOpen() || e.fullAt.After(start) {
+		if k.Repo != r || !e.ok || !e.val.IsOpen() || start.Before(e.wroteStart) {
 			continue
 		}
 		if !slices.Contains(open, forge.ChangeRef{Repo: r, Number: k.Number}) {
@@ -432,11 +443,11 @@ func (c *Cache) staleDropped(start time.Time, r forge.RepoRef, open []forge.Chan
 func (c *Cache) store(start, now time.Time, changes []forge.Change) {
 	for _, ch := range changes {
 		e := c.changeEntry(forge.ChangeKey(ch.Repo, ch.Number))
-		if e.fullAt.After(start) {
+		if start.Before(e.wroteStart) {
 			continue
 		}
 		prev, hadPrev := e.val, e.ok
-		e.val, e.ok, e.fetchedAt, e.fullAt = ch, true, now, now
+		e.val, e.ok, e.fetchedAt, e.fullAt, e.wroteStart = ch, true, now, now, start
 		e.lastErr, e.backoff = nil, 0
 		if hadPrev {
 			c.emit(now, forge.Diff(prev, ch))
@@ -448,10 +459,10 @@ func (c *Cache) store(start, now time.Time, changes []forge.Change) {
 // start, unless a later-started fetch already wrote the entry. Requires c.mu.
 func (c *Cache) storeNegative(start, now time.Time, ref forge.ChangeRef) {
 	e := c.changeEntry(forge.ChangeKey(ref.Repo, ref.Number))
-	if e.fullAt.After(start) {
+	if start.Before(e.wroteStart) {
 		return
 	}
-	e.val, e.ok, e.fetchedAt, e.fullAt = forge.Change{}, false, now, now
+	e.val, e.ok, e.fetchedAt, e.fullAt, e.wroteStart = forge.Change{}, false, now, now, start
 	e.lastErr, e.backoff = nil, 0
 }
 
