@@ -1,0 +1,27 @@
+direction: right
+
+consumers: "tmux-og, crew,\npr-watch, prdash, agents" {shape: person}
+cli: "forged pr view|list\ninternal/ghcompat" {class: good}
+watchcli: "forged watch\ninternal/cli" {class: good}
+ghbin: "gh\n(fallback exec)"
+client: "client/\nGo client" {class: good}
+server: "internal/server\nunix socket, HTTP + NDJSON" {class: good}
+cache: "internal/cache\nmax-age, leases, tiers,\nsingleflight, batcher" {class: good}
+events: "event ring\nforge.Diff, seq, resync" {class: good}
+provider: "forge.Provider\n(no GitHub types)" {class: accent}
+github: "internal/github\nGraphQL batches,\nREST ETag probe" {class: good}
+gh: "GitHub API" {shape: cloud}
+
+consumers -> cli: "swap gh -> forged"
+consumers -> watchcli: "wait for CI / reviews"
+consumers -> client: "Go import"
+cli -> client
+watchcli -> client
+cli -> ghbin: "daemon down /\noutside subset"
+client -> server: "GET /v1/...  /v1/watch" {style.animated: true}
+server -> cache: "Read, Invalidate, Subscribe" {style.animated: true}
+cache -> events: "diff on store"
+events -> server: "typed events"
+cache -> provider: "GetMany, ListOpen, Probe"
+provider -> github
+github -> gh: "1 aliased query;\n304s free" {style.animated: true}

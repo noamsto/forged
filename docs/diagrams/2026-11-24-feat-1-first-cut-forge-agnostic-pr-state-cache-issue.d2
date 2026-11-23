@@ -1,0 +1,18 @@
+direction: right
+
+gh: "GitHub API\nGraphQL + REST" {shape: cloud; class: warn}
+
+tmux: "tmux-og PR enricher\n120s/300s, 30s pending"
+roster: "crew roster daemon\ngh pr view, 60s TTL"
+prwatch: "pr-watch.sh\ngh pr view + REST, 60s"
+reap: "crew reap\nstate, head oid, per run"
+prdash: "prdash\nsearch + rollups, 30s/2m"
+
+missing: "no shared cache\nno conditional requests\nno coalescing" {class: warn}
+
+tmux -> gh: "open PRs + rollups" {style.animated: true}
+roster -> gh: "checks + review" {style.animated: true}
+prwatch -> gh: "view + comments" {style.animated: true}
+reap -> gh: "state, oid" {style.animated: true}
+prdash -> gh: "searches, rollups" {style.animated: true}
+gh -> missing: "~1-2k calls/h,\nsame facts x4"
