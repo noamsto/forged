@@ -1,0 +1,41 @@
+{
+ "author": {
+  "is_bot": true,
+  "login": "app/dependabot"
+ },
+ "autoMergeRequest": null,
+ "baseRefName": "trunk",
+ "headRefName": "dependabot/go_modules/github.com/charmbracelet/x/ansi-0.11.10",
+ "headRefOid": "b7d38765850266766f6f4662808dca6f84789afd",
+ "isDraft": false,
+ "mergeStateStatus": "UNKNOWN",
+ "mergeable": "UNKNOWN",
+ "number": 15145,
+ "reviewDecision": "APPROVED",
+ "state": "MERGED",
+ "statusCheckRollup": [
+  {
+   "__typename": "CheckRun",
+   "completedAt": "2026-11-23T14:03:42Z",
+   "conclusion": "SKIPPED",
+   "detailsUrl": "https://github.com/cli/cli/actions/runs/45190148370/job/137746127991",
+   "name": "label-external",
+   "startedAt": "2026-11-23T14:03:51Z",
+   "status": "COMPLETED",
+   "workflowName": "PR Triaging"
+  },
+  {
+   "__typename": "CheckRun",
+   "completedAt": "2026-11-23T14:03:41Z",
+   "conclusion": "SKIPPED",
+   "detailsUrl": "https://github.com/cli/cli/actions/runs/45190148489/job/137746091417",
+   "name": "label-external",
+   "startedAt": "2026-11-23T14:03:47Z",
+   "status": "COMPLETED",
+   "workflowName": "PR Triaging"
+  }
+ ],
+ "title": "chore(deps): Bump github.com/charmbracelet/x/ansi from 0.11.9 to 0.11.10",
+ "updatedAt": "2026-11-23T18:24:29Z",
+ "url": "https://github.com/cli/cli/pull/15145"
+}
