@@ -108,7 +108,10 @@ func isTTY(w io.Writer) bool {
 		return false
 	}
 	st, err := f.Stat()
-	return err == nil && st.Mode()&os.ModeCharDevice != 0
+	if err != nil {
+		return false
+	}
+	return st.Mode()&os.ModeCharDevice != 0
 }
 
 func fallback(args []string, stderr io.Writer, env func(string) string, cause error) int {

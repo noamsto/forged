@@ -29,7 +29,7 @@ func shortDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(d) })
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
 	return d
 }
 
@@ -41,8 +41,8 @@ func serve(t *testing.T, h http.Handler) string {
 		t.Fatal(err)
 	}
 	srv := &http.Server{Handler: h}
-	go srv.Serve(ln)
-	t.Cleanup(func() { srv.Close() })
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
 	return sock
 }
 
@@ -79,7 +79,7 @@ func TestRequestParams(t *testing.T) {
 		got.mu.Lock()
 		got.path, got.query = r.URL.Path, r.URL.Query()
 		got.mu.Unlock()
-		json.NewEncoder(w).Encode(map[string]any{"changes": []forge.Change{}})
+		_ = json.NewEncoder(w).Encode(map[string]any{"changes": []forge.Change{}})
 	}))
 	cl := client.New(sock)
 	ctx := context.Background()
@@ -105,7 +105,7 @@ func TestRequestParams(t *testing.T) {
 func TestAPIErrorCarriesStatusAndMessage(t *testing.T) {
 	sock := serve(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
-		w.Write([]byte(`{"error":"upstream said no"}`))
+		_, _ = w.Write([]byte(`{"error":"upstream said no"}`))
 	}))
 	_, err := client.New(sock).ListOpen(context.Background(), repo, client.ReadOptions{})
 	var apiErr *client.APIError

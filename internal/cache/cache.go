@@ -178,12 +178,7 @@ func (c *Cache) provider(k forge.Key) (string, error) {
 func (c *Cache) touch(k forge.Key, focus bool) {
 	now := c.o.Clock.Now()
 	if k.IsList() {
-		e := c.lists[k]
-		if e == nil {
-			e = &listEntry{}
-			c.lists[k] = e
-		}
-		e.lastRead = now
+		c.listEntry(k).lastRead = now
 		return
 	}
 	e := c.changeEntry(k)
@@ -191,6 +186,34 @@ func (c *Cache) touch(k forge.Key, focus bool) {
 	if focus {
 		e.focusUntil = now.Add(c.o.LeaseTTL)
 	}
+}
+
+// batcher returns the batcher of a provider name that provider(k) returned.
+func (c *Cache) batcher(name string) *batcher {
+	b, ok := c.batchers[name]
+	if !ok {
+		panic("cache: no batcher for provider " + name)
+	}
+	return b
+}
+
+// knownProvider returns the provider of a name that provider(k) returned.
+func (c *Cache) knownProvider(name string) forge.Provider {
+	p, ok := c.providers[name]
+	if !ok {
+		panic("cache: unknown provider " + name)
+	}
+	return p
+}
+
+// listEntry returns k's entry, creating an unfetched one. Requires c.mu.
+func (c *Cache) listEntry(k forge.Key) *listEntry {
+	e := c.lists[k]
+	if e == nil {
+		e = &listEntry{}
+		c.lists[k] = e
+	}
+	return e
 }
 
 // changeEntry returns k's entry, creating an unfetched one. Requires c.mu.
@@ -210,7 +233,7 @@ func (c *Cache) fresh(k forge.Key, maxAge time.Duration) bool {
 	}
 	now := c.o.Clock.Now()
 	if k.IsList() {
-		e := c.lists[k]
+		e := c.listEntry(k)
 		fetchedAt := c.listFetchedAt(e)
 		if fetchedAt.IsZero() {
 			return false
@@ -220,7 +243,7 @@ func (c *Cache) fresh(k forge.Key, maxAge time.Duration) bool {
 		}
 		return now.Sub(fetchedAt) < maxAge
 	}
-	e := c.changes[k]
+	e := c.changeEntry(k)
 	if e.fetchedAt.IsZero() {
 		return false
 	}
@@ -258,7 +281,7 @@ func (c *Cache) listNegative(k forge.Key, e *listEntry) bool {
 // list part itself is still fresh; nil when the whole list must be fetched.
 // Requires c.mu.
 func (c *Cache) staleMembers(k forge.Key, maxAge time.Duration) []forge.ChangeRef {
-	e := c.lists[k]
+	e := c.listEntry(k)
 	if maxAge <= 0 || e.listFetchedAt.IsZero() || c.o.Clock.Now().Sub(e.listFetchedAt) >= maxAge {
 		return nil
 	}
@@ -290,7 +313,7 @@ func (c *Cache) flight(ctx context.Context, key string, fn func(context.Context)
 // fetchChanges fetches refs through the provider's batcher and applies each
 // outcome. It returns the first per-ref error other than absence.
 func (c *Cache) fetchChanges(name string, refs []forge.ChangeRef) error {
-	got := c.batchers[name].do(refs, false)
+	got := c.batcher(name).do(refs, false)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -326,7 +349,7 @@ func (c *Cache) applyFetched(name string, got map[forge.ChangeRef]forge.Fetched)
 }
 
 func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
-	p := c.providers[name]
+	p := c.knownProvider(name)
 	if k.Kind == forge.KindRepoOpen {
 		done := make(chan struct{})
 		c.mu.Lock()
@@ -373,11 +396,7 @@ func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
 	if k.Kind == forge.KindRepoOpen {
 		c.staleDropped(k.Repo, refs)
 	}
-	e := c.lists[k]
-	if e == nil {
-		e = &listEntry{}
-		c.lists[k] = e
-	}
+	e := c.listEntry(k)
 	e.refs = refs
 	e.listFetchedAt, e.fullAt = now, now
 	e.backoff = 0
@@ -419,13 +438,13 @@ func (c *Cache) storeNegative(now time.Time, ref forge.ChangeRef) {
 // result builds k's Result from memory. Requires c.mu.
 func (c *Cache) result(k forge.Key) (Result, error) {
 	if !k.IsList() {
-		e := c.changes[k]
+		e := c.changeEntry(k)
 		if !e.ok {
 			return Result{FetchedAt: e.fetchedAt, Negative: true}, fmt.Errorf("%s: %w", k, forge.ErrNotFound)
 		}
 		return Result{Changes: []forge.Change{e.val}, FetchedAt: e.fetchedAt}, nil
 	}
-	e := c.lists[k]
+	e := c.listEntry(k)
 	res := Result{FetchedAt: c.listFetchedAt(e), Negative: c.listNegative(k, e)}
 	for _, ref := range e.refs {
 		if m := c.changes[forge.ChangeKey(ref.Repo, ref.Number)]; m != nil && m.ok {

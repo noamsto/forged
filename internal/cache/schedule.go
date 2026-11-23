@@ -107,7 +107,9 @@ func (c *Cache) Tick(ctx context.Context) {
 	c.mu.Unlock()
 
 	for _, name := range slices.Sorted(maps.Keys(plans)) {
-		c.runPlan(ctx, name, plans[name])
+		if tp := plans[name]; tp != nil {
+			c.runPlan(ctx, name, tp)
+		}
 	}
 }
 
@@ -225,7 +227,7 @@ func (c *Cache) runPlan(ctx context.Context, name string, tp *tickPlan) {
 	for _, r := range slices.SortedFunc(maps.Keys(tp.repos), func(a, b forge.RepoRef) int {
 		return cmp.Compare(a.String(), b.String())
 	}) {
-		if rp := tp.repos[r]; rp.due {
+		if rp := tp.repos[r]; rp != nil && rp.due {
 			c.probe(ctx, name, r, rp)
 		}
 	}
@@ -234,13 +236,15 @@ func (c *Cache) runPlan(ctx context.Context, name string, tp *tickPlan) {
 // pollChanges fetches refs in one immediate batch; a failed ref backs off from
 // its poll interval.
 func (c *Cache) pollChanges(name string, refs map[forge.ChangeRef]time.Duration) {
-	got := c.batchers[name].do(slices.Collect(maps.Keys(refs)), true)
+	got := c.batcher(name).do(slices.Collect(maps.Keys(refs)), true)
 
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	now := c.o.Clock.Now()
 	for ref := range c.applyFetched(name, got) {
-		c.changes[forge.ChangeKey(ref.Repo, ref.Number)].fail(now, refs[ref], c.o.MaxBackoff)
+		if e := c.changes[forge.ChangeKey(ref.Repo, ref.Number)]; e != nil {
+			e.fail(now, refs[ref], c.o.MaxBackoff)
+		}
 	}
 }
 
@@ -257,7 +261,9 @@ func (c *Cache) pollList(ctx context.Context, name string, k forge.Key) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.lists[k].fail(c.o.Clock.Now(), c.o.WarmInterval, c.o.MaxBackoff)
+	if e := c.lists[k]; e != nil {
+		e.fail(c.o.Clock.Now(), c.o.WarmInterval, c.o.MaxBackoff)
+	}
 }
 
 // probe asks whether r changed: changed refetches its warm set, unchanged
@@ -267,7 +273,7 @@ func (c *Cache) probe(ctx context.Context, name string, r forge.RepoRef, rp *rep
 		return
 	}
 	end := c.meter.begin(name, "Probe")
-	res, err := c.providers[name].Probe(ctx, r)
+	res, err := c.knownProvider(name).Probe(ctx, r)
 	end()
 
 	c.mu.Lock()
@@ -276,23 +282,28 @@ func (c *Cache) probe(ctx context.Context, name string, r forge.RepoRef, rp *rep
 	case err != nil:
 		c.notePause(name, err)
 		for _, k := range rp.lists {
-			c.lists[k].fail(now, c.o.WarmInterval, c.o.MaxBackoff)
+			if e := c.lists[k]; e != nil {
+				e.fail(now, c.o.WarmInterval, c.o.MaxBackoff)
+			}
 		}
 		for _, ref := range rp.changes {
-			c.changes[forge.ChangeKey(ref.Repo, ref.Number)].fail(now, c.o.WarmInterval, c.o.MaxBackoff)
+			if e := c.changes[forge.ChangeKey(ref.Repo, ref.Number)]; e != nil {
+				e.fail(now, c.o.WarmInterval, c.o.MaxBackoff)
+			}
 		}
 		c.mu.Unlock()
 		return
 	case !res.Changed:
 		revalidate := slices.Clone(rp.changes)
 		for _, k := range rp.lists {
-			e := c.lists[k]
-			e.listFetchedAt, e.backoff = now, 0
-			revalidate = append(revalidate, e.refs...)
+			if e := c.lists[k]; e != nil {
+				e.listFetchedAt, e.backoff = now, 0
+				revalidate = append(revalidate, e.refs...)
+			}
 		}
 		for _, ref := range revalidate {
 			e := c.changes[forge.ChangeKey(ref.Repo, ref.Number)]
-			if e.fetchedAt.IsZero() || c.hotContent(now, e) {
+			if e == nil || e.fetchedAt.IsZero() || c.hotContent(now, e) {
 				continue
 			}
 			e.fetchedAt, e.backoff = now, 0
@@ -308,8 +319,10 @@ func (c *Cache) probe(ctx context.Context, name string, r forge.RepoRef, rp *rep
 	c.mu.Lock()
 	inLists := map[forge.ChangeRef]bool{}
 	for _, k := range rp.lists {
-		for _, ref := range c.lists[k].refs {
-			inLists[ref] = true
+		if e := c.lists[k]; e != nil {
+			for _, ref := range e.refs {
+				inLists[ref] = true
+			}
 		}
 	}
 	refs := map[forge.ChangeRef]time.Duration{}

@@ -12,10 +12,10 @@ func (c *Cache) TestSetFetchedAt(k forge.Key, t time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if k.IsList() {
-		c.lists[k].listFetchedAt = t
+		c.listEntry(k).listFetchedAt = t
 		return
 	}
-	c.changes[k].fetchedAt = t
+	c.changeEntry(k).fetchedAt = t
 }
 
 func (c *Cache) TestBatchPending() int { return c.Stats().BatchPending }

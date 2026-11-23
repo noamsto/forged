@@ -151,23 +151,23 @@ func (c *Client) Status(ctx context.Context) (Status, error) {
 func (c *Client) do(ctx context.Context, method, path string, q url.Values, body []byte, out any) error {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
-	resp, err := c.send(ctx, method, path, q, body)
+	respBody, err := c.send(ctx, method, path, q, body)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = respBody.Close() }()
 	if out == nil {
-		_, err = io.Copy(io.Discard, resp.Body)
+		_, err = io.Copy(io.Discard, respBody)
 		return err
 	}
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
+	if err := json.NewDecoder(respBody).Decode(out); err != nil {
 		return fmt.Errorf("decode %s response: %w", path, err)
 	}
 	return nil
 }
 
 // send issues the request and maps transport failures and non-2xx statuses to typed errors.
-func (c *Client) send(ctx context.Context, method, path string, q url.Values, body []byte) (*http.Response, error) {
+func (c *Client) send(ctx context.Context, method, path string, q url.Values, body []byte) (io.ReadCloser, error) {
 	u := base + path
 	if len(q) > 0 {
 		u += "?" + q.Encode()
@@ -184,9 +184,9 @@ func (c *Client) send(ctx context.Context, method, path string, q url.Values, bo
 		return nil, fmt.Errorf("%w: %w", ErrUnavailable, err)
 	}
 	if resp.StatusCode/100 == 2 {
-		return resp, nil
+		return resp.Body, nil
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ErrNotFound
 	}

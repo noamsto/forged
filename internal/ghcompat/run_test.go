@@ -57,7 +57,7 @@ func newRunEnv(t *testing.T) *runEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(sd) })
+	t.Cleanup(func() { _ = os.RemoveAll(sd) })
 	return &runEnv{
 		stubOut: filepath.Join(t.TempDir(), "stub.out"),
 		sock:    filepath.Join(sd, "s.sock"),
@@ -117,8 +117,8 @@ func (e *runEnv) serve(t *testing.T) *forgetest.Fake {
 		t.Fatal(err)
 	}
 	srv := &http.Server{Handler: server.New(c, "v-test")}
-	go srv.Serve(ln)
-	t.Cleanup(func() { srv.Close() })
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
 	return fake
 }
 

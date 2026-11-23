@@ -35,7 +35,7 @@ func shortDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(d) })
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
 	return d
 }
 
@@ -54,8 +54,8 @@ func setup(t *testing.T) *harness {
 		t.Fatal(err)
 	}
 	srv := &http.Server{Handler: server.New(c, "v-test")}
-	go srv.Serve(ln)
-	t.Cleanup(func() { srv.Close() })
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
 	return &harness{sock: sock, cl: client.New(sock), fake: fake, clk: clk, cache: c}
 }
 
@@ -82,7 +82,7 @@ func rawGet(t *testing.T, sock, path string) int {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	return resp.StatusCode
 }
 

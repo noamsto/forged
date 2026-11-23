@@ -29,8 +29,6 @@ func ts(s string) time.Time {
 	return t
 }
 
-func ptr(s string) *string { return &s }
-
 func newChange(repo, host string, number int) forge.Change {
 	c := forge.Change{Repo: forge.RepoRef{Forge: "github", Host: host, Owner: "o", Name: repo}, Number: number}
 	return c
@@ -125,9 +123,9 @@ func refAutoMerge() forge.Change {
 		Method:         "merge",
 		EnabledAt:      ts("2026-11-11T14:17:33Z"),
 		EnabledBy:      forge.Actor{Login: "babakks", Name: "Babak K. Shandiz", ID: "MDQ6VXNlcjM2NzI4OTMx"},
-		AuthorEmail:    ptr("babakks@github.com"),
-		CommitHeadline: ptr("Merge pull request #15028 from cli/bump-go-1.27.4"),
-		CommitBody:     ptr("Bump Go to 1.27.4"),
+		AuthorEmail:    new("babakks@github.com"),
+		CommitHeadline: new("Merge pull request #15028 from cli/bump-go-1.27.4"),
+		CommitBody:     new("Bump Go to 1.27.4"),
 	}
 	c.UpdatedAt = ts("2026-11-11T14:26:42Z")
 	return c

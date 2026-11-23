@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"maps"
 	"sync"
 	"time"
 )
@@ -69,9 +70,7 @@ func (c *Cache) Stats() Stats {
 	c.meter.mu.Lock()
 	s.Inflight = c.meter.inflight
 	s.Calls = make(map[string]int, len(c.meter.calls))
-	for k, n := range c.meter.calls {
-		s.Calls[k] = n
-	}
+	maps.Copy(s.Calls, c.meter.calls)
 	c.meter.mu.Unlock()
 	for _, b := range c.batchers {
 		s.BatchPending += b.pendingRefs()

@@ -13,7 +13,7 @@ func shortDir(t *testing.T) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.RemoveAll(d) })
+	t.Cleanup(func() { _ = os.RemoveAll(d) })
 	return d
 }
 
@@ -34,7 +34,7 @@ func TestListenFromEnvNilWhenNotActivated(t *testing.T) {
 				t.Fatalf("err = %v", err)
 			}
 			if ln != nil {
-				ln.Close()
+				_ = ln.Close()
 				t.Fatal("listener = non-nil, want nil")
 			}
 		})
@@ -60,7 +60,7 @@ func TestListenCreatesDirPrivate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	fi, err := os.Stat(dir)
 	if err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestListenRemovesStaleSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	stale.SetUnlinkOnClose(false)
-	stale.Close()
+	_ = stale.Close()
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("stale socket file missing: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestListenRemovesStaleSocket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Listen over stale socket: %v", err)
 	}
-	ln.Close()
+	_ = ln.Close()
 }
 
 func TestListenRefusesLiveSocket(t *testing.T) {
@@ -95,20 +95,20 @@ func TestListenRefusesLiveSocket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer live.Close()
+	defer func() { _ = live.Close() }()
 	go func() {
 		for {
 			c, err := live.Accept()
 			if err != nil {
 				return
 			}
-			c.Close()
+			_ = c.Close()
 		}
 	}()
 
 	ln, err := Listen(path)
 	if err == nil {
-		ln.Close()
+		_ = ln.Close()
 		t.Fatal("second Listen succeeded against a live listener")
 	}
 }

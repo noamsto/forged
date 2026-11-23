@@ -35,15 +35,15 @@ func Main(args []string) int {
 
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
-		fmt.Fprint(stderr, usage)
+		_, _ = fmt.Fprint(stderr, usage)
 		return 2
 	}
 	switch args[0] {
 	case "version":
-		fmt.Fprintln(stdout, "forge-cache "+version)
+		_, _ = fmt.Fprintln(stdout, "forge-cache "+version)
 		return 0
 	case "help":
-		fmt.Fprint(stdout, usage)
+		_, _ = fmt.Fprint(stdout, usage)
 		return 0
 	case "serve":
 		return serve(args[1:], stderr)
@@ -54,23 +54,23 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "status":
 		return status(stdout, stderr)
 	default:
-		fmt.Fprint(stderr, usage)
+		_, _ = fmt.Fprint(stderr, usage)
 		return 2
 	}
 }
 
 func invalidate(args []string, stderr io.Writer) int {
 	if len(args) != 1 {
-		fmt.Fprint(stderr, usage)
+		_, _ = fmt.Fprint(stderr, usage)
 		return 2
 	}
 	k, err := parseKey(args[0])
 	if err != nil {
-		fmt.Fprintf(stderr, "forge-cache: %v\n%s", err, usage)
+		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n%s", err, usage)
 		return 2
 	}
 	if err := client.New("").Invalidate(context.Background(), k); err != nil {
-		fmt.Fprintf(stderr, "forge-cache: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", err)
 		return 1
 	}
 	return 0
@@ -97,13 +97,13 @@ func parseKey(s string) (forge.Key, error) {
 func status(stdout, stderr io.Writer) int {
 	s, err := client.New("").Status(context.Background())
 	if err != nil {
-		fmt.Fprintf(stderr, "forge-cache: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", err)
 		return 1
 	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(s); err != nil {
-		fmt.Fprintf(stderr, "forge-cache: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", err)
 		return 1
 	}
 	return 0

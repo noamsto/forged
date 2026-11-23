@@ -31,9 +31,7 @@ var (
 	newProviders = func() map[string]forge.Provider {
 		return map[string]forge.Provider{"github/github.com": github.New(github.Options{})}
 	}
-	serveCtx = func() (context.Context, context.CancelFunc) {
-		return signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	}
+	serveParent = context.Background()
 )
 
 func serve(args []string, stderr io.Writer) int {
@@ -68,7 +66,7 @@ func serve(args []string, stderr io.Writer) int {
 		log.Warn("ignoring snapshot", "err", err)
 	}
 
-	ctx, stop := serveCtx()
+	ctx, stop := signal.NotifyContext(serveParent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go c.Run(ctx)
 	go func() {

@@ -9,8 +9,6 @@ import (
 
 func fields(s string) []string { return strings.Split(s, ",") }
 
-func dur(d time.Duration) *time.Duration { return &d }
-
 func TestParseSupported(t *testing.T) {
 	const prURL = "https://github.com/o/r/pull/42"
 	tests := []struct {
@@ -28,8 +26,8 @@ func TestParseSupported(t *testing.T) {
 		{"view flags before arg", "pr view -R o/r --json number 5", Request{Cmd: "view", Number: 5, Repo: "o/r", Fields: fields("number")}},
 		{"view -q", "pr view 5 --json number -q .number", Request{Cmd: "view", Number: 5, Fields: fields("number"), JQ: ".number"}},
 		{"view --jq=", "pr view 5 --json number --jq=.number", Request{Cmd: "view", Number: 5, Fields: fields("number"), JQ: ".number"}},
-		{"view max-age 0", "pr view 5 --json number --max-age 0", Request{Cmd: "view", Number: 5, Fields: fields("number"), MaxAge: dur(0)}},
-		{"view max-age=", "pr view 5 --json number --max-age=30s", Request{Cmd: "view", Number: 5, Fields: fields("number"), MaxAge: dur(30 * time.Second)}},
+		{"view max-age 0", "pr view 5 --json number --max-age 0", Request{Cmd: "view", Number: 5, Fields: fields("number"), MaxAge: new(time.Duration(0))}},
+		{"view max-age=", "pr view 5 --json number --max-age=30s", Request{Cmd: "view", Number: 5, Fields: fields("number"), MaxAge: new(30 * time.Second)}},
 		{"view all fields", "pr view 5 --json " + strings.Join(allFields, ","), Request{Cmd: "view", Number: 5, Fields: allFields}},
 		{"list defaults", "pr list --json number", Request{Cmd: "list", State: "open", Limit: 30, Fields: fields("number")}},
 		{"list -R -L5", "pr list -R o/r -L5 --json number", Request{Cmd: "list", Repo: "o/r", State: "open", Limit: 5, Fields: fields("number")}},

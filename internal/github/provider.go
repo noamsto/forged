@@ -180,11 +180,10 @@ func rateLimitError(resp *http.Response) *forge.RateLimitError {
 	if resp.Header.Get("X-RateLimit-Remaining") != "0" {
 		return nil
 	}
-	reset, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64)
-	if err != nil {
-		return nil
+	if reset, err := strconv.ParseInt(resp.Header.Get("X-RateLimit-Reset"), 10, 64); err == nil {
+		return &forge.RateLimitError{RetryAfter: time.Unix(reset, 0)}
 	}
-	return &forge.RateLimitError{RetryAfter: time.Unix(reset, 0)}
+	return nil
 }
 
 func truncate(b []byte) string {

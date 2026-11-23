@@ -33,7 +33,7 @@
         # The same dependency pin the binary is built with. buildGoModule wires
         # GOPATH/GOMODCACHE to a fetched, read-only module cache, so the
         # static-analysis checks run offline in the Nix sandbox.
-        vendorHash = "sha256-RkmZ4qyOWyGaQkgmR1Ak2K0NLZa/7C4wfivddmPPJyc=";
+        vendorHash = "sha256-02NsZIVB73+unTdA5OHGvymcj/EXmFhW/3Uyp9v8ijY=";
         version = "0.1.0";
       in {
         packages.forge-cache = pkgs.buildGoModule {

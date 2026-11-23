@@ -76,11 +76,9 @@ func TestReadSingleflight(t *testing.T) {
 	errs := make([]error, n)
 	var wg sync.WaitGroup
 	for i := range n {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			results[i], errs[i] = c.Read(context.Background(), k, ReadOpts{})
-		}()
+		})
 	}
 
 	select {

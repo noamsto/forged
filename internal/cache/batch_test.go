@@ -111,15 +111,13 @@ func TestBatchConcurrentReadsOneGetMany(t *testing.T) {
 	got := make([]forge.Change, 10)
 	errs := make([]error, 10)
 	for n := 1; n <= 10; n++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			res, err := c.Read(context.Background(), forge.ChangeKey(repoA, n), ReadOpts{})
 			errs[n-1] = err
 			if err == nil {
 				got[n-1] = res.Changes[0]
 			}
-		}()
+		})
 	}
 	eventually(t, "10 pending refs", func() bool { return c.TestBatchPending() == 10 })
 	wantCalls(t, fake, "GetMany", 0)
@@ -156,13 +154,11 @@ func TestBatchFlushesAtMaxBatch(t *testing.T) {
 
 	var wg sync.WaitGroup
 	for n := 1; n <= 60; n++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if _, err := c.Read(context.Background(), forge.ChangeKey(repoA, n), ReadOpts{}); err != nil {
 				t.Errorf("read %d: %v", n, err)
 			}
-		}()
+		})
 	}
 	waitEntered(t, fake, "GetMany")
 	wantCalls(t, fake, "GetMany", 1)

@@ -24,7 +24,7 @@ func (c *Cache) Invalidate(ctx context.Context, k forge.Key) error {
 	c.touch(k, false)
 	switch {
 	case !k.IsList():
-		c.changes[k].hotUntil = now.Add(c.o.HotHold)
+		c.changeEntry(k).hotUntil = now.Add(c.o.HotHold)
 	case k.Kind == forge.KindRepoOpen:
 		for ck, e := range c.changes {
 			if ck.Repo == k.Repo {

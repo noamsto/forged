@@ -47,7 +47,7 @@ func (p *Provider) Probe(ctx context.Context, r forge.RepoRef) (forge.ProbeResul
 	// on that guess says nothing about the real list.
 	seen := p.markProbed(r)
 	hit := resp.Header.Get("X-Cache") == "HIT" && !strings.Contains(resp.Header.Get("Cache-Status"), "speculative")
-	return forge.ProbeResult{Changed: !(hit && seen)}, nil
+	return forge.ProbeResult{Changed: !hit || !seen}, nil
 }
 
 // markProbed records r as probed and reports whether it already was.

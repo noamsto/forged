@@ -75,7 +75,7 @@ func (c *Cache) SaveSnapshot(path string) error {
 // LoadSnapshot adds the entries of the snapshot at path that the cache does not
 // hold yet. They keep their original fetch time and stay cold until read.
 func (c *Cache) LoadSnapshot(path string) error {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is the operator-chosen snapshot location
 	if err != nil {
 		return err
 	}

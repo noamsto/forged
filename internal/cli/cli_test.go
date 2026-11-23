@@ -91,10 +91,10 @@ func startDaemon(t *testing.T) *daemon {
 	fake.SetChanges(repo, []forge.Change{{Repo: repo, Number: 5, State: forge.StateOpen, Title: "t"}})
 
 	ctx, cancel := context.WithCancel(context.Background())
-	oldProviders, oldCtx := newProviders, serveCtx
+	oldProviders, oldParent := newProviders, serveParent
 	newProviders = func() map[string]forge.Provider { return map[string]forge.Provider{"github/github.com": fake} }
-	serveCtx = func() (context.Context, context.CancelFunc) { return ctx, cancel }
-	t.Cleanup(func() { newProviders, serveCtx = oldProviders, oldCtx })
+	serveParent = ctx
+	t.Cleanup(func() { newProviders, serveParent = oldProviders, oldParent })
 
 	d := &daemon{sock: sock, state: state, fake: fake, cancel: cancel, done: make(chan int, 1), stderr: &syncBuffer{}}
 	go func() { d.done <- run([]string{"serve", "--socket", sock}, &bytes.Buffer{}, d.stderr) }()

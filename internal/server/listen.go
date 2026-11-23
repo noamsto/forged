@@ -23,9 +23,9 @@ func DefaultSocketPath(env func(string) string) (string, error) {
 // process was not socket-activated. It unsets the LISTEN_* variables.
 func ListenFromEnv() (net.Listener, error) {
 	defer func() {
-		os.Unsetenv("LISTEN_PID")
-		os.Unsetenv("LISTEN_FDS")
-		os.Unsetenv("LISTEN_FDNAMES")
+		_ = os.Unsetenv("LISTEN_PID")
+		_ = os.Unsetenv("LISTEN_FDS")
+		_ = os.Unsetenv("LISTEN_FDNAMES")
 	}()
 	return listenFromEnv(os.Getenv, os.Getpid())
 }
@@ -38,7 +38,7 @@ func listenFromEnv(env func(string) string, pid int) (net.Listener, error) {
 		return nil, nil
 	}
 	f := os.NewFile(3, "LISTEN_FD_3")
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	return net.FileListener(f)
 }
 
@@ -49,7 +49,7 @@ func Listen(path string) (net.Listener, error) {
 		return nil, err
 	}
 	if c, err := net.DialTimeout("unix", path, time.Second); err == nil {
-		c.Close()
+		_ = c.Close()
 		return nil, fmt.Errorf("socket %s is already in use", path)
 	}
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
