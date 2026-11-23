@@ -34,6 +34,7 @@ type changeEntry struct {
 	fetchedAt  time.Time
 	fullAt     time.Time // last real fetch; a probe revalidation bumps only fetchedAt
 	lastRead   time.Time
+	loadedAt   time.Time // snapshot load time: delays eviction without leasing
 	hotUntil   time.Time
 	focusUntil time.Time
 	poll
@@ -48,6 +49,7 @@ type listEntry struct {
 	listFetchedAt time.Time
 	fullAt        time.Time
 	lastRead      time.Time
+	loadedAt      time.Time
 	poll
 }
 
@@ -62,23 +64,27 @@ type Cache struct {
 	lists        map[forge.Key]*listEntry
 	inflightList map[forge.RepoRef]chan struct{}  // closed when that repo-open fetch has stored
 	paused       map[string]*forge.RateLimitError // by provider name, until RetryAfter
+	subs         map[*subscriber]struct{}
+	meter        meter
 }
 
 // New builds a Cache over providers keyed by forge+"/"+host (e.g. "github/github.com").
 func New(providers map[string]forge.Provider, o Options) *Cache {
-	batchers := make(map[string]*batcher, len(providers))
-	for name, p := range providers {
-		batchers[name] = newBatcher(p, o.Clock, o.BatchWindow)
-	}
-	return &Cache{
+	c := &Cache{
 		o:            o,
 		providers:    providers,
-		batchers:     batchers,
+		batchers:     make(map[string]*batcher, len(providers)),
 		changes:      map[forge.Key]*changeEntry{},
 		lists:        map[forge.Key]*listEntry{},
 		inflightList: map[forge.RepoRef]chan struct{}{},
 		paused:       map[string]*forge.RateLimitError{},
+		subs:         map[*subscriber]struct{}{},
+		meter:        meter{calls: map[string]int{}},
 	}
+	for name, p := range providers {
+		c.batchers[name] = newBatcher(name, p, o.Clock, o.BatchWindow, &c.meter)
+	}
+	return c
 }
 
 // Read returns k's value, fetching it when the cached one is older than the
@@ -337,11 +343,17 @@ func (c *Cache) fetchList(ctx context.Context, name string, k forge.Key) error {
 	var err error
 	switch k.Kind {
 	case forge.KindRepoOpen:
+		end := c.meter.begin(name, "ListOpen")
 		changes, err = p.ListOpen(ctx, k.Repo)
+		end()
 	case forge.KindByBranch:
+		end := c.meter.begin(name, "ByBranch")
 		changes, err = p.ByBranch(ctx, k.Repo, k.Branch)
+		end()
 	default: // forge.KindQuery
+		end := c.meter.begin(name, "Search")
 		changes, err = p.Search(ctx, k.Query, k.Limit)
+		end()
 	}
 	if err != nil {
 		c.mu.Lock()
@@ -403,9 +415,6 @@ func (c *Cache) storeNegative(now time.Time, ref forge.ChangeRef) {
 	e.val, e.ok, e.fetchedAt, e.fullAt = forge.Change{}, false, now, now
 	e.lastErr, e.backoff = nil, 0
 }
-
-// publish emits watch events for changed values. Requires c.mu.
-func (c *Cache) publish(_, _ forge.Change) {}
 
 // result builds k's Result from memory. Requires c.mu.
 func (c *Cache) result(k forge.Key) (Result, error) {

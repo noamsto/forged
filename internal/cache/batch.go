@@ -14,6 +14,8 @@ const defaultMaxBatch = 50
 // batcher coalesces change fetches for one provider into GetMany calls: refs
 // queue for the batch window or until MaxBatch accumulate.
 type batcher struct {
+	name   string
+	meter  *meter
 	p      forge.Provider
 	clock  clock.Clock
 	window time.Duration
@@ -25,12 +27,14 @@ type batcher struct {
 	gen     int // invalidates the callback of a timer whose refs were already taken
 }
 
-func newBatcher(p forge.Provider, clk clock.Clock, window time.Duration) *batcher {
+func newBatcher(name string, p forge.Provider, clk clock.Clock, window time.Duration, m *meter) *batcher {
 	maxBatch := p.Capabilities().MaxBatch
 	if maxBatch == 0 {
 		maxBatch = defaultMaxBatch
 	}
 	return &batcher{
+		name:    name,
+		meter:   m,
 		p:       p,
 		clock:   clk,
 		window:  window,
@@ -122,7 +126,9 @@ func (b *batcher) run(bt batch) {
 		refs = append(refs, ref)
 	}
 	// Detached: waiters from several readers share this call.
+	end := b.meter.begin(b.name, "GetMany")
 	got, err := b.p.GetMany(context.Background(), refs)
+	end()
 	for ref, waiters := range bt {
 		f := got[ref]
 		if err != nil {

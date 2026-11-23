@@ -66,7 +66,7 @@ func (c *Cache) hotContent(now time.Time, e *changeEntry) bool {
 // changeTier requires c.mu.
 func (c *Cache) changeTier(now time.Time, k forge.Key, e *changeEntry, members map[forge.ChangeRef]bool) tier {
 	switch {
-	case !c.leased(now, e.lastRead) && !members[forge.ChangeRef{Repo: k.Repo, Number: k.Number}]:
+	case !c.leased(now, e.lastRead) && !members[forge.ChangeRef{Repo: k.Repo, Number: k.Number}] && !c.watched(k):
 		return tierCold
 	case c.hotContent(now, e):
 		return tierHot
@@ -115,7 +115,7 @@ func (c *Cache) Tick(ctx context.Context) {
 // holds it. Requires c.mu.
 func (c *Cache) evict(now time.Time) {
 	for k, e := range c.lists {
-		if now.Sub(e.lastRead) >= c.o.EvictAfter {
+		if c.unread(now, e.lastRead, e.loadedAt) {
 			delete(c.lists, k)
 		}
 	}
@@ -126,10 +126,15 @@ func (c *Cache) evict(now time.Time) {
 		}
 	}
 	for k, e := range c.changes {
-		if now.Sub(e.lastRead) >= c.o.EvictAfter && !kept[forge.ChangeRef{Repo: k.Repo, Number: k.Number}] {
+		if c.unread(now, e.lastRead, e.loadedAt) && !kept[forge.ChangeRef{Repo: k.Repo, Number: k.Number}] && !c.watched(k) {
 			delete(c.changes, k)
 		}
 	}
+}
+
+// unread reports whether an entry went EvictAfter without a read or load.
+func (c *Cache) unread(now, lastRead, loadedAt time.Time) bool {
+	return now.Sub(lastRead) >= c.o.EvictAfter && now.Sub(loadedAt) >= c.o.EvictAfter
 }
 
 // plan collects the due work per provider. Requires c.mu.
@@ -261,7 +266,9 @@ func (c *Cache) probe(ctx context.Context, name string, r forge.RepoRef, rp *rep
 	if c.isPaused(name) {
 		return
 	}
+	end := c.meter.begin(name, "Probe")
 	res, err := c.providers[name].Probe(ctx, r)
+	end()
 
 	c.mu.Lock()
 	now := c.o.Clock.Now()

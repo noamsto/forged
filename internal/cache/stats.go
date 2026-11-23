@@ -1,15 +1,43 @@
 package cache
 
+import (
+	"sync"
+	"time"
+)
+
 type Stats struct {
 	Keys         int // change and list entries
 	Hot          int
 	Warm         int
 	Cold         int
-	BatchPending int // change refs queued and not yet sent upstream
+	Inflight     int                  // upstream calls in progress
+	BatchPending int                  // change refs queued and not yet sent upstream
+	Calls        map[string]int       // upstream calls by "<provider key>.<Method>"
+	PausedUntil  map[string]time.Time // rate-limited providers by key
+}
+
+// meter counts the cache's upstream calls.
+type meter struct {
+	mu       sync.Mutex
+	inflight int
+	calls    map[string]int
+}
+
+// begin records an upstream call and returns the function that ends it.
+func (m *meter) begin(provider, method string) func() {
+	m.mu.Lock()
+	m.inflight++
+	m.calls[provider+"."+method]++
+	m.mu.Unlock()
+	return func() {
+		m.mu.Lock()
+		m.inflight--
+		m.mu.Unlock()
+	}
 }
 
 func (c *Cache) Stats() Stats {
-	var s Stats
+	s := Stats{PausedUntil: map[string]time.Time{}}
 	c.mu.Lock()
 	now := c.o.Clock.Now()
 	members := c.leasedMembers(now)
@@ -31,7 +59,20 @@ func (c *Cache) Stats() Stats {
 			s.Cold++
 		}
 	}
+	for name := range c.paused {
+		if rl := c.pause(name); rl != nil {
+			s.PausedUntil[name] = rl.RetryAfter
+		}
+	}
 	c.mu.Unlock()
+
+	c.meter.mu.Lock()
+	s.Inflight = c.meter.inflight
+	s.Calls = make(map[string]int, len(c.meter.calls))
+	for k, n := range c.meter.calls {
+		s.Calls[k] = n
+	}
+	c.meter.mu.Unlock()
 	for _, b := range c.batchers {
 		s.BatchPending += b.pendingRefs()
 	}
