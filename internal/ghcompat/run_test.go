@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/cache"
-	"github.com/noamsto/forge-cache/internal/clock"
-	"github.com/noamsto/forge-cache/internal/forgetest"
-	"github.com/noamsto/forge-cache/internal/server"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/cache"
+	"github.com/noamsto/forged/internal/clock"
+	"github.com/noamsto/forged/internal/forgetest"
+	"github.com/noamsto/forged/internal/server"
 )
 
 // TestMain turns the test binary into a helper that runs Run, so a fallback
@@ -75,7 +75,7 @@ func (e *runEnv) run(t *testing.T, args ...string) (int, string, string) {
 		"PATH=" + e.path,
 		"GO_WANT_HELPER=1",
 		"STUB_OUT=" + e.stubOut,
-		"FORGE_CACHE_SOCKET=" + e.sock,
+		"FORGED_SOCKET=" + e.sock,
 		"GH_REPO=noamsto/prdash",
 		"GIT_CONFIG_GLOBAL=" + os.DevNull,
 		"GIT_CONFIG_NOSYSTEM=1",
@@ -213,7 +213,7 @@ func TestRunServesViewWithJQ(t *testing.T) {
 
 func TestRunNoFallbackDaemonDownFails(t *testing.T) {
 	e := newRunEnv(t)
-	e.extra = []string{"FORGE_CACHE_NO_FALLBACK=1"}
+	e.extra = []string{"FORGED_NO_FALLBACK=1"}
 	code, stdout, stderr := e.run(t, "pr", "view", "213", "-R", "noamsto/prdash", "--json", allFieldsArg)
 	if code != 1 {
 		t.Errorf("exit = %d, want 1", code)

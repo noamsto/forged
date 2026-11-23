@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/client"
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/cache"
-	"github.com/noamsto/forge-cache/internal/clock"
-	"github.com/noamsto/forge-cache/internal/forgetest"
-	"github.com/noamsto/forge-cache/internal/server"
+	"github.com/noamsto/forged/client"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/cache"
+	"github.com/noamsto/forged/internal/clock"
+	"github.com/noamsto/forged/internal/forgetest"
+	"github.com/noamsto/forged/internal/server"
 )
 
 var repo = forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
@@ -84,7 +84,7 @@ func rawGet(t *testing.T, sock, path string) int {
 			return (&net.Dialer{}).DialContext(ctx, "unix", sock)
 		},
 	}}
-	resp, err := hc.Get("http://forge-cache" + path)
+	resp, err := hc.Get("http://forged" + path)
 	if err != nil {
 		t.Fatal(err)
 	}

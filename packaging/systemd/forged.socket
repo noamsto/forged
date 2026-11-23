@@ -1,0 +1,10 @@
+[Unit]
+Description=forged PR state cache socket
+
+[Socket]
+ListenStream=%t/forged/forged.sock
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target

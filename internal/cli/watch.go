@@ -13,9 +13,9 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/noamsto/forge-cache/client"
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/ghcompat"
+	"github.com/noamsto/forged/client"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/ghcompat"
 )
 
 // watchParent is a test seam, like serveParent.
@@ -64,7 +64,7 @@ func watch(args []string, stdout, stderr io.Writer) int {
 		for name := range strings.SplitSeq(*events, ",") {
 			t := forge.EventType(name)
 			if !slices.Contains(eventTypes, t) {
-				_, _ = fmt.Fprintf(stderr, "forge-cache: unknown event type %q\n", name)
+				_, _ = fmt.Fprintf(stderr, "forged: unknown event type %q\n", name)
 				return 2
 			}
 			types = append(types, t)
@@ -76,7 +76,7 @@ func watch(args []string, stdout, stderr io.Writer) int {
 
 	repo, fb := ghcompat.ResolveRepo(ctx, ghcompat.Request{Repo: *repoFlag}, os.Getenv, "")
 	if fb != nil {
-		_, _ = fmt.Fprintf(stderr, "forge-cache: cannot resolve repo: %v\n", fb)
+		_, _ = fmt.Fprintf(stderr, "forged: cannot resolve repo: %v\n", fb)
 		return 2
 	}
 
@@ -88,7 +88,7 @@ func watch(args []string, stdout, stderr io.Writer) int {
 	})
 	ch, err := client.New("").Subscribe(ctx, opts)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "forged: %v\n", err)
 		return 1
 	}
 
@@ -96,7 +96,7 @@ func watch(args []string, stdout, stderr io.Writer) int {
 	var last uint64
 	for ev := range ch {
 		if err := enc.Encode(ev); err != nil {
-			_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", err)
+			_, _ = fmt.Fprintf(stderr, "forged: %v\n", err)
 			return 1
 		}
 		last = ev.Seq

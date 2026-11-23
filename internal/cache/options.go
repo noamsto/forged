@@ -3,7 +3,7 @@ package cache
 import (
 	"time"
 
-	"github.com/noamsto/forge-cache/internal/clock"
+	"github.com/noamsto/forged/internal/clock"
 )
 
 type Options struct {

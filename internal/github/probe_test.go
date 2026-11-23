@@ -8,7 +8,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 type probeServer struct {

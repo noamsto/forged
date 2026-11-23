@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/forgetest"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/forgetest"
 )
 
 var upstreamMethods = []string{"ListOpen", "Get", "GetMany", "ByBranch", "Search", "Probe"}

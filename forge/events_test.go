@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 var diffRepo = forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}

@@ -9,7 +9,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // repoGroup is one repository's slice of a batch: the PR numbers selected under

@@ -6,7 +6,7 @@ import (
 	"os/exec"
 	"testing"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 func envOf(m map[string]string) func(string) string {

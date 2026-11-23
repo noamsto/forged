@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/forgetest"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/forgetest"
 )
 
 func change(r forge.RepoRef, n int, s forge.State, branch string) forge.Change {

@@ -10,7 +10,7 @@ import (
 	ghtransport "github.com/bored-engineer/github-conditional-http-transport"
 	"github.com/bored-engineer/github-conditional-http-transport/memory"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // probeClient wraps the authenticated transport in the conditional-request cache.

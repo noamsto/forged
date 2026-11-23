@@ -1,31 +1,31 @@
 ---
-name: forge-cache
+name: forged
 description: Use when reading pull request state, checks, reviews or mergeability, or waiting for CI or reviews. Serves `gh pr view|list` from a shared local cache and streams change events.
 ---
 
-# forge-cache
+# forged
 
-A local daemon holds one shared copy of PR state. `forge-cache pr` answers
-from it, and `forge-cache watch` pushes changes, so neither you nor other
+A local daemon holds one shared copy of PR state. `forged pr` answers
+from it, and `forged watch` pushes changes, so neither you nor other
 agents poll GitHub.
 
 ## Reading
 
-Use `forge-cache pr view|list … --json …` wherever you would use `gh pr view|list`. Flags and
+Use `forged pr view|list … --json …` wherever you would use `gh pr view|list`. Flags and
 JSON shape match `gh`.
 
 ```fish
-forge-cache pr view 12 -R noamsto/forge-cache --json state,statusCheckRollup,reviewDecision,mergeable
-forge-cache pr list -R noamsto/forge-cache --json number,title,headRefName
+forged pr view 12 -R noamsto/forged --json state,statusCheckRollup,reviewDecision,mergeable
+forged pr list -R noamsto/forged --json number,title,headRefName
 ```
 
 - Fallback to `gh` is automatic for anything outside the cached subset or when the
-  daemon is down. Call `forge-cache` first, never `gh` "to be safe".
+  daemon is down. Call `forged` first, never `gh` "to be safe".
 - Default freshness (30s) suits exploring. Add `--max-age 0` on the read that
   precedes an action: a merge, a status report, a next-step decision.
 
 ```fish
-forge-cache pr view 12 -R noamsto/forge-cache --json statusCheckRollup,mergeable --max-age 0
+forged pr view 12 -R noamsto/forged --json statusCheckRollup,mergeable --max-age 0
 ```
 
 ## Writing
@@ -34,10 +34,10 @@ Mutations stay on `gh` (merge, comment, edit, push). Right after one, refetch th
 change so the next reader sees it:
 
 ```fish
-forge-cache invalidate github.com/noamsto/forge-cache#12
+forged invalidate github.com/noamsto/forged#12
 ```
 
-`invalidate github.com/noamsto/forge-cache` refetches the repo's open list.
+`invalidate github.com/noamsto/forged` refetches the repo's open list.
 
 ## Waiting for CI or reviews
 
@@ -50,7 +50,7 @@ Watch instead of polling. Order matters, so nothing slips between read and watch
 4. Read again with `--max-age 0` and act on that read, never on the event alone.
 
 ```fish
-forge-cache watch -R noamsto/forge-cache --pr 12 --event checks.completed,review.submitted,review_decision.changed
+forged watch -R noamsto/forged --pr 12 --event checks.completed,review.submitted,review_decision.changed
 ```
 
 Event types: `checks.started`, `checks.completed`, `review.submitted`,
@@ -65,7 +65,7 @@ register after a push. The final `--max-age 0` read decides whether CI is done.
 Exit code 1 means the stream ended. stderr names the last `seq`; resume from it:
 
 ```fish
-forge-cache watch -R noamsto/forge-cache --pr 12 --event checks.completed --since 1769990000123456
+forged watch -R noamsto/forged --pr 12 --event checks.completed --since 1769990000123456
 ```
 
 After every reconnect, and after a `resync` event (the cursor fell out of the
@@ -78,5 +78,5 @@ only when you need the whole repo. A newly opened PR emits no event; list the re
 again on reconnect to find it.
 
 ```fish
-forge-cache watch -R noamsto/forge-cache --event state.changed,head.changed
+forged watch -R noamsto/forged --event state.changed,head.changed
 ```

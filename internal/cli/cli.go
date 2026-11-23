@@ -1,4 +1,4 @@
-// Package cli dispatches the forge-cache subcommands.
+// Package cli dispatches the forged subcommands.
 package cli
 
 import (
@@ -10,14 +10,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/noamsto/forge-cache/client"
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/ghcompat"
+	"github.com/noamsto/forged/client"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/ghcompat"
 )
 
 var version = "dev"
 
-const usage = `usage: forge-cache <command>
+const usage = `usage: forged <command>
 
 commands:
   serve [--socket PATH] [--snapshot PATH] [--lease-ttl D] [--hot-interval D] [--warm-interval D]
@@ -42,7 +42,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	switch args[0] {
 	case "version":
-		_, _ = fmt.Fprintln(stdout, "forge-cache "+version)
+		_, _ = fmt.Fprintln(stdout, "forged "+version)
 		return 0
 	case "help":
 		_, _ = fmt.Fprint(stdout, usage)
@@ -70,11 +70,11 @@ func invalidate(args []string, stderr io.Writer) int {
 	}
 	k, err := parseKey(args[0])
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n%s", err, usage)
+		_, _ = fmt.Fprintf(stderr, "forged: %v\n%s", err, usage)
 		return 2
 	}
 	if err := client.New("").Invalidate(context.Background(), k); err != nil {
-		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "forged: %v\n", err)
 		return 1
 	}
 	return 0
@@ -101,13 +101,13 @@ func parseKey(s string) (forge.Key, error) {
 func status(stdout, stderr io.Writer) int {
 	s, err := client.New("").Status(context.Background())
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "forged: %v\n", err)
 		return 1
 	}
 	enc := json.NewEncoder(stdout)
 	enc.SetIndent("", "  ")
 	if err := enc.Encode(s); err != nil {
-		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "forged: %v\n", err)
 		return 1
 	}
 	return 0

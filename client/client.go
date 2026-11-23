@@ -1,4 +1,4 @@
-// Package client talks to the forge-cache daemon over its unix socket.
+// Package client talks to the forged daemon over its unix socket.
 //
 //	cl := client.New("") // DefaultSocket()
 //	maxAge := time.Minute
@@ -24,14 +24,14 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 const callTimeout = 15 * time.Second
 
 var (
 	// ErrUnavailable means the daemon could not be reached or did not answer in time.
-	ErrUnavailable = errors.New("forge-cache daemon unavailable")
+	ErrUnavailable = errors.New("forged daemon unavailable")
 	// ErrNotFound means the daemon answered 404 for the requested change.
 	ErrNotFound = errors.New("not found")
 )
@@ -42,7 +42,7 @@ type APIError struct {
 	Message string
 }
 
-func (e *APIError) Error() string { return fmt.Sprintf("forge-cache: %d: %s", e.Status, e.Message) }
+func (e *APIError) Error() string { return fmt.Sprintf("forged: %d: %s", e.Status, e.Message) }
 
 // ReadOptions tunes freshness. A nil MaxAge uses the daemon default.
 type ReadOptions struct {
@@ -60,12 +60,12 @@ type Client struct {
 	hc *http.Client
 }
 
-// DefaultSocket returns $FORGE_CACHE_SOCKET, else $XDG_RUNTIME_DIR/forge-cache/forge-cache.sock.
+// DefaultSocket returns $FORGED_SOCKET, else $XDG_RUNTIME_DIR/forged/forged.sock.
 func DefaultSocket() string {
-	if s := os.Getenv("FORGE_CACHE_SOCKET"); s != "" {
+	if s := os.Getenv("FORGED_SOCKET"); s != "" {
 		return s
 	}
-	return filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "forge-cache", "forge-cache.sock")
+	return filepath.Join(os.Getenv("XDG_RUNTIME_DIR"), "forged", "forged.sock")
 }
 
 // New returns a client for the daemon at socket; empty means DefaultSocket().
@@ -80,7 +80,7 @@ func New(socket string) *Client {
 	}}}
 }
 
-const base = "http://forge-cache"
+const base = "http://forged"
 
 func (o ReadOptions) apply(q url.Values) {
 	if o.MaxAge != nil {

@@ -3,7 +3,7 @@ package cache
 import (
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // eventLog numbers events and keeps the last Options.EventBuffer of them for replay.

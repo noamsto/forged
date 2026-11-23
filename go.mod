@@ -1,4 +1,4 @@
-module github.com/noamsto/forge-cache
+module github.com/noamsto/forged
 
 go 1.26.0
 

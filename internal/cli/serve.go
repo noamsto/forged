@@ -15,10 +15,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/cache"
-	"github.com/noamsto/forge-cache/internal/github"
-	"github.com/noamsto/forge-cache/internal/server"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/cache"
+	"github.com/noamsto/forged/internal/github"
+	"github.com/noamsto/forged/internal/server"
 )
 
 const (
@@ -38,8 +38,8 @@ func serve(args []string, stderr io.Writer) int {
 	opts := cache.DefaultOptions()
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	socket := fs.String("socket", "", "unix socket `path` (default $XDG_RUNTIME_DIR/forge-cache/forge-cache.sock)")
-	snapshot := fs.String("snapshot", "", "snapshot file `path` (default $XDG_STATE_HOME/forge-cache/snapshot.json)")
+	socket := fs.String("socket", "", "unix socket `path` (default $XDG_RUNTIME_DIR/forged/forged.sock)")
+	snapshot := fs.String("snapshot", "", "snapshot file `path` (default $XDG_STATE_HOME/forged/snapshot.json)")
 	fs.DurationVar(&opts.LeaseTTL, "lease-ttl", opts.LeaseTTL, "how long a read keeps an entry polled")
 	fs.DurationVar(&opts.HotInterval, "hot-interval", opts.HotInterval, "poll interval for hot entries")
 	fs.DurationVar(&opts.WarmInterval, "warm-interval", opts.WarmInterval, "probe interval for warm entries")
@@ -129,11 +129,11 @@ func listen(socket string) (ln net.Listener, owned bool, err error) {
 
 func defaultSnapshotPath() (string, error) {
 	if dir := os.Getenv("XDG_STATE_HOME"); dir != "" {
-		return filepath.Join(dir, "forge-cache", "snapshot.json"), nil
+		return filepath.Join(dir, "forged", "snapshot.json"), nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("snapshot path: %w", err)
 	}
-	return filepath.Join(home, ".local", "state", "forge-cache", "snapshot.json"), nil
+	return filepath.Join(home, ".local", "state", "forged", "snapshot.json"), nil
 }

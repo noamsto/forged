@@ -37,36 +37,36 @@
         version = "0.1.0";
       in {
         packages = {
-          forge-cache = pkgs.buildGoModule {
-            pname = "forge-cache";
+          forged = pkgs.buildGoModule {
+            pname = "forged";
             inherit version;
             src = ./.;
             inherit vendorHash;
             # checks.go-gate runs the suite.
             doCheck = false;
-            ldflags = ["-s" "-w" "-X github.com/noamsto/forge-cache/internal/cli.version=${version}"];
+            ldflags = ["-s" "-w" "-X github.com/noamsto/forged/internal/cli.version=${version}"];
             postInstall = ''
-              install -Dm644 packaging/systemd/forge-cache.socket packaging/systemd/forge-cache.service \
+              install -Dm644 packaging/systemd/forged.socket packaging/systemd/forged.service \
                 -t $out/share/systemd/user
-              substituteInPlace $out/share/systemd/user/forge-cache.service --subst-var out
-              install -Dm644 skills/forge-cache/SKILL.md \
-                -t $out/share/forge-cache/skills/forge-cache
+              substituteInPlace $out/share/systemd/user/forged.service --subst-var out
+              install -Dm644 skills/forged/SKILL.md \
+                -t $out/share/forged/skills/forged
             '';
             meta = {
               description = "Shared, forge-agnostic PR state cache daemon";
-              mainProgram = "forge-cache";
+              mainProgram = "forged";
             };
           };
-          skill = pkgs.runCommand "forge-cache-skill" {} "cp -r ${./skills/forge-cache} $out";
-          default = config.packages.forge-cache;
+          skill = pkgs.runCommand "forged-skill" {} "cp -r ${./skills/forged} $out";
+          default = config.packages.forged;
         };
 
         # The whole Go gate in one derivation, so its steps share one GOCACHE
         # instead of each compiling every dependency from scratch. It reuses
-        # packages.forge-cache's module cache (same src + vendorHash) and runs in
+        # packages.forged's module cache (same src + vendorHash) and runs in
         # checkPhase, so `nix flake check` enforces it locally and in CI.
         checks.go-gate = pkgs.buildGoModule {
-          pname = "forge-cache-go-gate";
+          pname = "forged-go-gate";
           version = "0.0.0";
           src = ./.;
           inherit vendorHash;
@@ -83,13 +83,13 @@
             # drop it for the same reason its own checkPhase does.
             export GOFLAGS=''${GOFLAGS//-trimpath/}
             golangci-lint run ./...
-            nilaway -include-pkgs=github.com/noamsto/forge-cache ./...
+            nilaway -include-pkgs=github.com/noamsto/forged ./...
             go test ./...
             go test -race ./...
             runHook postCheck
           '';
           installPhase = "touch $out";
-          meta.description = "forge-cache Go gate: golangci-lint, nilaway, go test, go test -race";
+          meta.description = "forged Go gate: golangci-lint, nilaway, go test, go test -race";
         };
 
         treefmt = {

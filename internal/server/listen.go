@@ -10,13 +10,13 @@ import (
 	"time"
 )
 
-// DefaultSocketPath is $XDG_RUNTIME_DIR/forge-cache/forge-cache.sock.
+// DefaultSocketPath is $XDG_RUNTIME_DIR/forged/forged.sock.
 func DefaultSocketPath(env func(string) string) (string, error) {
 	dir := env("XDG_RUNTIME_DIR")
 	if dir == "" {
 		return "", errors.New("XDG_RUNTIME_DIR is not set; pass --socket")
 	}
-	return filepath.Join(dir, "forge-cache", "forge-cache.sock"), nil
+	return filepath.Join(dir, "forged", "forged.sock"), nil
 }
 
 // ListenFromEnv returns the systemd-activated listener, or nil when the

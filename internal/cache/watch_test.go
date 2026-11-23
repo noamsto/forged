@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 func recvEvent(t *testing.T, ch <-chan forge.ChangeEvent) forge.ChangeEvent {

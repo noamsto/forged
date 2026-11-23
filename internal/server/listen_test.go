@@ -46,7 +46,7 @@ func TestDefaultSocketPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := "/run/user/1000/forge-cache/forge-cache.sock"; got != want {
+	if want := "/run/user/1000/forged/forged.sock"; got != want {
 		t.Fatalf("path = %q, want %q", got, want)
 	}
 	if _, err := DefaultSocketPath(lookupFrom(nil)); err == nil {

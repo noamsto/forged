@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/client"
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/forgetest"
+	"github.com/noamsto/forged/client"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/forgetest"
 )
 
 func TestMainBasics(t *testing.T) {
@@ -86,7 +86,7 @@ func startDaemon(t *testing.T) *daemon {
 	state := t.TempDir()
 	t.Setenv("XDG_STATE_HOME", state)
 	sock := filepath.Join(dir, "s.sock")
-	t.Setenv("FORGE_CACHE_SOCKET", sock)
+	t.Setenv("FORGED_SOCKET", sock)
 
 	repo := forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
 	fake := forgetest.New()
@@ -135,7 +135,7 @@ func TestServeLifecycle(t *testing.T) {
 	if code := d.stop(t); code != 0 {
 		t.Fatalf("serve exit = %d; stderr: %s", code, d.stderr)
 	}
-	if _, err := os.Stat(filepath.Join(d.state, "forge-cache", "snapshot.json")); err != nil {
+	if _, err := os.Stat(filepath.Join(d.state, "forged", "snapshot.json")); err != nil {
 		t.Errorf("snapshot not written: %v", err)
 	}
 	if _, err := os.Stat(d.sock); !os.IsNotExist(err) {
@@ -206,7 +206,7 @@ func TestClientCommandsWithoutDaemon(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	t.Setenv("FORGE_CACHE_SOCKET", filepath.Join(dir, "none.sock"))
+	t.Setenv("FORGED_SOCKET", filepath.Join(dir, "none.sock"))
 	for _, args := range [][]string{{"status"}, {"invalidate", "o/r#1"}} {
 		var stdout, stderr bytes.Buffer
 		if got := run(args, &stdout, &stderr); got != 1 {
@@ -361,7 +361,7 @@ func TestWatchWithoutDaemonOrHost(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	t.Setenv("FORGE_CACHE_SOCKET", filepath.Join(dir, "none.sock"))
+	t.Setenv("FORGED_SOCKET", filepath.Join(dir, "none.sock"))
 	var stdout, stderr bytes.Buffer
 	if got := run([]string{"watch", "-R", "o/r"}, &stdout, &stderr); got != 1 {
 		t.Fatalf("daemon down: exit = %d, want 1", got)
@@ -383,7 +383,7 @@ func TestWatchStreamEnded(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	sock := filepath.Join(dir, "s.sock")
-	t.Setenv("FORGE_CACHE_SOCKET", sock)
+	t.Setenv("FORGED_SOCKET", sock)
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
 		t.Fatal(err)

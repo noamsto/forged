@@ -1,9 +1,9 @@
-# forge-cache
+# forged
 
 A local daemon that keeps one shared copy of pull/merge-request state from
 code forges and serves it to local tools. Shells, editors, dashboards and
 agents all ask the same question ("what is the state of PR 7?") many times a
-minute; forge-cache answers from memory, batches and coalesces the upstream
+minute; forged answers from memory, batches and coalesces the upstream
 calls, and keeps the data fresh in the background only while someone is reading
 it.
 
@@ -21,32 +21,32 @@ forge-agnostic.
 Flake package:
 
 ```fish
-nix build github:noamsto/forge-cache
-nix run github:noamsto/forge-cache -- version
+nix build github:noamsto/forged
+nix run github:noamsto/forged -- version
 ```
 
 Home Manager module (`flake.homeManagerModules.default`):
 
 ```nix
 {
-  imports = [ forge-cache.homeManagerModules.default ];
-  services.forge-cache = {
+  imports = [ forged.homeManagerModules.default ];
+  services.forged = {
     enable = true;
     # package = ...;     # default: this flake's package
     # ghPackage = pkgs.gh; # put on the daemon's PATH
-    # extraArgs = [ "--lease-ttl" "20m" ];  # appended to `forge-cache serve`
+    # extraArgs = [ "--lease-ttl" "20m" ];  # appended to `forged serve`
   };
 }
 ```
 
 The module installs the package and defines the user socket and service units.
 
-Manual units: the package ships `share/systemd/user/forge-cache.{socket,service}`.
+Manual units: the package ships `share/systemd/user/forged.{socket,service}`.
 Link them into `~/.config/systemd/user/`, then:
 
 ```fish
 systemctl --user daemon-reload
-systemctl --user enable --now forge-cache.socket
+systemctl --user enable --now forged.socket
 ```
 
 The daemon calls the GitHub API using the token from `gh`, so `gh` must be on
@@ -54,15 +54,15 @@ its `PATH` and authenticated.
 
 ## Socket activation
 
-The socket unit listens on `$XDG_RUNTIME_DIR/forge-cache/forge-cache.sock`
+The socket unit listens on `$XDG_RUNTIME_DIR/forged/forged.sock`
 (`SocketMode=0600`, `DirectoryMode=0700`); systemd starts the daemon on the first
-connection. Without activation, `forge-cache serve` listens on `--socket`, else
+connection. Without activation, `forged serve` listens on `--socket`, else
 the same default path (an error if `XDG_RUNTIME_DIR` is unset). A stale socket
 file that nothing answers on is removed. Clients resolve the path from
-`FORGE_CACHE_SOCKET`, else the default.
+`FORGED_SOCKET`, else the default.
 
 The daemon saves a snapshot of its entries every 60s and on shutdown
-(`SIGINT`/`SIGTERM`) to `$XDG_STATE_HOME/forge-cache/snapshot.json` (fallback
+(`SIGINT`/`SIGTERM`) to `$XDG_STATE_HOME/forged/snapshot.json` (fallback
 `~/.local/state`), and loads it at start. Loaded entries are cold until read, and
 their max-age is measured from the original fetch time.
 
@@ -122,18 +122,18 @@ Errors are `{"error": "..."}` with these codes:
 | 502 | Upstream or provider failure (including rate-limit pause) |
 
 ```
-curl --unix-socket $XDG_RUNTIME_DIR/forge-cache/forge-cache.sock 'http://x/v1/change?repo=github.com/o/r&number=1'
+curl --unix-socket $XDG_RUNTIME_DIR/forged/forged.sock 'http://x/v1/change?repo=github.com/o/r&number=1'
 ```
 
 ## CLI
 
 ```
-forge-cache serve [--socket PATH] [--snapshot PATH] [--lease-ttl D] [--hot-interval D] [--warm-interval D]
-forge-cache pr view|list ...        # gh-compatible subset
-forge-cache invalidate <host/owner/repo>[#N]
-forge-cache watch [-R owner/repo] [--pr N] [--event t1,t2] [--since SEQ]
-forge-cache status                  # daemon version and stats, JSON
-forge-cache version
+forged serve [--socket PATH] [--snapshot PATH] [--lease-ttl D] [--hot-interval D] [--warm-interval D]
+forged pr view|list ...        # gh-compatible subset
+forged invalidate <host/owner/repo>[#N]
+forged watch [-R owner/repo] [--pr N] [--event t1,t2] [--since SEQ]
+forged status                  # daemon version and stats, JSON
+forged version
 ```
 
 `invalidate github.com/o/r#5` refetches one change; `invalidate github.com/o/r`
@@ -150,7 +150,7 @@ the real `gh` unchanged (it replaces the process via exec), so you can alias
 | `pr view <number or https://github.com/o/r/pull/N>` | `--json` with fields is required |
 | `pr list` | open PRs by default; `--head`, `--state open\|closed\|merged\|all`, `--limit` (default 30) |
 | `-R/--repo`, `--json`, `--jq/-q` | `-H`, `-s`, `-L` are the short forms of `--head`, `--state`, `--limit` |
-| `--max-age DURATION` | forge-cache only; also `FORGE_CACHE_MAX_AGE` |
+| `--max-age DURATION` | forged only; also `FORGED_MAX_AGE` |
 
 `--json` fields: `number`, `url`, `title`, `state`, `isDraft`, `headRefName`,
 `headRefOid`, `baseRefName`, `mergeable`, `mergeStateStatus`, `reviewDecision`,
@@ -168,7 +168,7 @@ Falls back to `gh` when:
 - the daemon is unavailable, answers non-2xx, or the `--jq` expression fails to
   compile.
 
-`FORGE_CACHE_NO_FALLBACK=1` disables the fallback and reports the error instead.
+`FORGED_NO_FALLBACK=1` disables the fallback and reports the error instead.
 
 Divergences from `gh`: output is indented on a TTY but not colored; empty
 lists are `[]` rather than `null`; multi-remote repositories are not resolved the
@@ -176,7 +176,7 @@ way `gh` does it.
 
 ## Watching changes
 
-`forge-cache watch` prints one JSON change event per line until interrupted. The
+`forged watch` prints one JSON change event per line until interrupted. The
 repo comes from `-R`, `GH_REPO` or the git remote; `--pr N` narrows to one PR,
 `--event` to a list of types, and `--since SEQ` replays buffered events after
 that sequence number first. There is no `gh` fallback. Exit codes: 0 on
@@ -214,18 +214,18 @@ Rules for consumers:
 
 ## Agent skill
 
-[`skills/forge-cache/SKILL.md`](skills/forge-cache/SKILL.md) teaches agents to
-read PR state through `forge-cache pr` and to wait with `forge-cache watch`
+[`skills/forged/SKILL.md`](skills/forged/SKILL.md) teaches agents to
+read PR state through `forged pr` and to wait with `forged watch`
 instead of polling. The flake installs it two ways:
 
 - `nix build .#skill` puts `SKILL.md` at the root of the output.
-- `nix build .#forge-cache` includes it at
-  `share/forge-cache/skills/forge-cache/SKILL.md`.
+- `nix build .#forged` includes it at
+  `share/forged/skills/forged/SKILL.md`.
 
 ## Go client
 
 ```go
-cl := client.New("") // "" = $FORGE_CACHE_SOCKET or the default socket
+cl := client.New("") // "" = $FORGED_SOCKET or the default socket
 maxAge := time.Minute
 repo := forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
 

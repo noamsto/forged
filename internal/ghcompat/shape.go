@@ -1,5 +1,5 @@
 // Package ghcompat serves a subset of `gh pr view` / `gh pr list` from the
-// forge-cache daemon, falling back to the real gh for everything else.
+// forged daemon, falling back to the real gh for everything else.
 package ghcompat
 
 import (
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // fieldShapers is the single table of supported --json fields: Parse

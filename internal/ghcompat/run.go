@@ -11,8 +11,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/noamsto/forge-cache/client"
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/client"
+	"github.com/noamsto/forged/forge"
 )
 
 // Run serves a `gh pr view|list` invocation from the daemon and returns the
@@ -91,13 +91,13 @@ func readOptions(req Request, env func(string) string) (client.ReadOptions, erro
 	if req.MaxAge != nil {
 		return client.ReadOptions{MaxAge: req.MaxAge}, nil
 	}
-	v := env("FORGE_CACHE_MAX_AGE")
+	v := env("FORGED_MAX_AGE")
 	if v == "" {
 		return client.ReadOptions{}, nil
 	}
 	d, err := time.ParseDuration(v)
 	if err != nil {
-		return client.ReadOptions{}, fmt.Errorf("invalid FORGE_CACHE_MAX_AGE %q", v)
+		return client.ReadOptions{}, fmt.Errorf("invalid FORGED_MAX_AGE %q", v)
 	}
 	return client.ReadOptions{MaxAge: &d}, nil
 }
@@ -115,16 +115,16 @@ func isTTY(w io.Writer) bool {
 }
 
 func fallback(args []string, stderr io.Writer, env func(string) string, cause error) int {
-	if env("FORGE_CACHE_NO_FALLBACK") == "1" {
-		_, _ = fmt.Fprintf(stderr, "forge-cache: %v\n", cause)
+	if env("FORGED_NO_FALLBACK") == "1" {
+		_, _ = fmt.Fprintf(stderr, "forged: %v\n", cause)
 		return 1
 	}
 	path, err := exec.LookPath("gh")
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "forge-cache: %v; gh not found for fallback: %v\n", cause, err)
+		_, _ = fmt.Fprintf(stderr, "forged: %v; gh not found for fallback: %v\n", cause, err)
 		return 1
 	}
 	err = syscall.Exec(path, append([]string{"gh"}, args...), os.Environ()) //nolint:gosec // G204: fixed gh invocation
-	_, _ = fmt.Fprintf(stderr, "forge-cache: exec gh: %v\n", err)
+	_, _ = fmt.Fprintf(stderr, "forged: exec gh: %v\n", err)
 	return 1
 }

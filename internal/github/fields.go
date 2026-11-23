@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 const changeFields = `number url title author{__typename login ...on User{id name}} state isDraft headRefName headRefOid baseRefName mergeable mergeStateStatus reviewDecision updatedAt ` +

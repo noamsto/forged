@@ -1,0 +1,7 @@
+[Unit]
+Description=forged PR state cache daemon
+Requires=forged.socket
+
+[Service]
+ExecStart=@out@/bin/forged serve
+Restart=on-failure

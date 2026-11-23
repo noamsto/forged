@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/clock"
-	"github.com/noamsto/forge-cache/internal/forgetest"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/clock"
+	"github.com/noamsto/forged/internal/forgetest"
 )
 
 func newPeerCache(clk *clock.Fake, fake *forgetest.Fake) *Cache {

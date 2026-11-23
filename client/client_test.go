@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/client"
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/cache"
-	"github.com/noamsto/forge-cache/internal/clock"
-	"github.com/noamsto/forge-cache/internal/forgetest"
-	"github.com/noamsto/forge-cache/internal/server"
+	"github.com/noamsto/forged/client"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/cache"
+	"github.com/noamsto/forged/internal/clock"
+	"github.com/noamsto/forged/internal/forgetest"
+	"github.com/noamsto/forged/internal/server"
 )
 
 var repo = forge.RepoRef{Forge: "github", Host: "github.com", Owner: "o", Name: "r"}
@@ -115,12 +115,12 @@ func TestAPIErrorCarriesStatusAndMessage(t *testing.T) {
 }
 
 func TestDefaultSocket(t *testing.T) {
-	t.Setenv("FORGE_CACHE_SOCKET", "")
+	t.Setenv("FORGED_SOCKET", "")
 	t.Setenv("XDG_RUNTIME_DIR", "/run/user/1")
-	if got, want := client.DefaultSocket(), "/run/user/1/forge-cache/forge-cache.sock"; got != want {
+	if got, want := client.DefaultSocket(), "/run/user/1/forged/forged.sock"; got != want {
 		t.Fatalf("DefaultSocket = %q, want %q", got, want)
 	}
-	t.Setenv("FORGE_CACHE_SOCKET", "/x/y.sock")
+	t.Setenv("FORGED_SOCKET", "/x/y.sock")
 	if got := client.DefaultSocket(); got != "/x/y.sock" {
 		t.Fatalf("DefaultSocket with override = %q", got)
 	}

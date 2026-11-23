@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/noamsto/forge-cache/internal/cli"
+	"github.com/noamsto/forged/internal/cli"
 )
 
 func main() {

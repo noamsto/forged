@@ -13,7 +13,7 @@ import (
 
 	"golang.org/x/sync/singleflight"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 type ReadOpts struct {

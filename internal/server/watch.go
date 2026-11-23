@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/noamsto/forge-cache/forge"
-	"github.com/noamsto/forge-cache/internal/cache"
+	"github.com/noamsto/forged/forge"
+	"github.com/noamsto/forged/internal/cache"
 )
 
 var watchableTypes = []forge.EventType{

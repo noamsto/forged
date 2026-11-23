@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files from current output")

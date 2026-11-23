@@ -6,7 +6,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // Fake is a forge.Provider whose "remote truth" is set by the test. Safe for

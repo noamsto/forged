@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // SubscribeOptions selects the events to receive. Number 0 watches the whole repo, empty

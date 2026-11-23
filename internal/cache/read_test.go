@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 func mustRead(t *testing.T, c *Cache, k forge.Key, o ReadOpts) Result {

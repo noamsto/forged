@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 const gitTimeout = 5 * time.Second

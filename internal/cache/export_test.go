@@ -3,7 +3,7 @@ package cache
 import (
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // TestSetFetchedAt overrides the fetch time of a change entry or, for a list

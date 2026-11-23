@@ -5,5 +5,5 @@ result-*
 .pre-commit-config.yaml
 
 # Go
-/forge-cache
+/forged
 /bin/

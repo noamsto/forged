@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // poll is an entry's scheduler backoff state.

@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 const (

@@ -1,7 +1,0 @@
-[Unit]
-Description=forge-cache PR state cache daemon
-Requires=forge-cache.socket
-
-[Service]
-ExecStart=@out@/bin/forge-cache serve
-Restart=on-failure

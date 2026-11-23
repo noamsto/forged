@@ -3,7 +3,7 @@ package cache
 import (
 	"slices"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // liveBuffer is the room a subscriber channel has for live events beyond its replay.

@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/noamsto/forge-cache/forge"
+	"github.com/noamsto/forged/forge"
 )
 
 // Invalidate refetches k now, even when fresh, and returns once the result is
