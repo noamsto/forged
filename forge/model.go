@@ -100,6 +100,7 @@ type Change struct {
 	MergeState     string         `json:"mergeState"`
 	ReviewDecision ReviewDecision `json:"reviewDecision"`
 	Checks         Checks         `json:"checks"`
+	Reviews        []Review       `json:"reviews,omitempty"`
 	AutoMerge      *AutoMerge     `json:"autoMerge,omitempty"`
 	UpdatedAt      time.Time      `json:"updatedAt"`
 }
@@ -107,6 +108,14 @@ type Change struct {
 func (c Change) IsOpen() bool { return c.State == StateOpen }
 
 func (c Change) IsTerminal() bool { return c.State == StateMerged || c.State == StateClosed }
+
+// Review is one submitted review; State is lowercase
+// (approved|changes_requested|commented|dismissed|pending).
+type Review struct {
+	Author      Actor     `json:"author"`
+	State       string    `json:"state"`
+	SubmittedAt time.Time `json:"submittedAt"`
+}
 
 type Checks struct {
 	Rollup    Rollup     `json:"rollup"`

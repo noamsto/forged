@@ -54,6 +54,8 @@ type Provider interface {
 }
 
 // EventSource is an optional push seam; a tick means "mark hot and refetch".
+// A future event-listen source marks the change hot and refetches; the
+// refetch's diff feeds the same typed ChangeEvent stream.
 type EventSource interface {
 	Subscribe(ctx context.Context, ref ChangeRef) (<-chan struct{}, error)
 }
