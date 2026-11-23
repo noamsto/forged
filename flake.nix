@@ -36,25 +36,30 @@
         vendorHash = "sha256-02NsZIVB73+unTdA5OHGvymcj/EXmFhW/3Uyp9v8ijY=";
         version = "0.1.0";
       in {
-        packages.forge-cache = pkgs.buildGoModule {
-          pname = "forge-cache";
-          inherit version;
-          src = ./.;
-          inherit vendorHash;
-          # checks.go-gate runs the suite.
-          doCheck = false;
-          ldflags = ["-s" "-w" "-X github.com/noamsto/forge-cache/internal/cli.version=${version}"];
-          postInstall = ''
-            install -Dm644 packaging/systemd/forge-cache.socket packaging/systemd/forge-cache.service \
-              -t $out/share/systemd/user
-            substituteInPlace $out/share/systemd/user/forge-cache.service --subst-var out
-          '';
-          meta = {
-            description = "Shared, forge-agnostic PR state cache daemon";
-            mainProgram = "forge-cache";
+        packages = {
+          forge-cache = pkgs.buildGoModule {
+            pname = "forge-cache";
+            inherit version;
+            src = ./.;
+            inherit vendorHash;
+            # checks.go-gate runs the suite.
+            doCheck = false;
+            ldflags = ["-s" "-w" "-X github.com/noamsto/forge-cache/internal/cli.version=${version}"];
+            postInstall = ''
+              install -Dm644 packaging/systemd/forge-cache.socket packaging/systemd/forge-cache.service \
+                -t $out/share/systemd/user
+              substituteInPlace $out/share/systemd/user/forge-cache.service --subst-var out
+              install -Dm644 skills/forge-cache/SKILL.md \
+                -t $out/share/forge-cache/skills/forge-cache
+            '';
+            meta = {
+              description = "Shared, forge-agnostic PR state cache daemon";
+              mainProgram = "forge-cache";
+            };
           };
+          skill = pkgs.runCommand "forge-cache-skill" {} "cp -r ${./skills/forge-cache} $out";
+          default = config.packages.forge-cache;
         };
-        packages.default = config.packages.forge-cache;
 
         # The whole Go gate in one derivation, so its steps share one GOCACHE
         # instead of each compiling every dependency from scratch. It reuses

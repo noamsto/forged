@@ -27,15 +27,30 @@ var eventTypes = []forge.EventType{
 	forge.EventHeadChanged, forge.EventMergeableChanged,
 }
 
-func watch(args []string, stdout, stderr io.Writer) int {
+type watchFlags struct {
+	repo   string
+	pr     int
+	events string
+	since  uint64
+}
+
+// newWatchFlagSet is shared with skill_test.go so the skill's examples are
+// checked against the flags watch really accepts.
+func newWatchFlagSet(stderr io.Writer) (*flag.FlagSet, *watchFlags) {
 	fs := flag.NewFlagSet("watch", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	var repoFlag string
-	fs.StringVar(&repoFlag, "R", "", "watch `owner/repo` (default: GH_REPO or the git remote)")
-	fs.StringVar(&repoFlag, "repo", "", "watch `owner/repo` (default: GH_REPO or the git remote)")
-	pr := fs.Int("pr", 0, "watch only pull request `N`")
-	events := fs.String("event", "", "comma-separated event `types` to print (default all)")
-	since := fs.Uint64("since", 0, "replay buffered events after `SEQ` first")
+	var w watchFlags
+	fs.StringVar(&w.repo, "R", "", "watch `owner/repo` (default: GH_REPO or the git remote)")
+	fs.StringVar(&w.repo, "repo", "", "watch `owner/repo` (default: GH_REPO or the git remote)")
+	fs.IntVar(&w.pr, "pr", 0, "watch only pull request `N`")
+	fs.StringVar(&w.events, "event", "", "comma-separated event `types` to print (default all)")
+	fs.Uint64Var(&w.since, "since", 0, "replay buffered events after `SEQ` first")
+	return fs, &w
+}
+
+func watch(args []string, stdout, stderr io.Writer) int {
+	fs, wf := newWatchFlagSet(stderr)
+	repoFlag, pr, events, since := &wf.repo, &wf.pr, &wf.events, &wf.since
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -59,7 +74,7 @@ func watch(args []string, stdout, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(watchParent, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	repo, fb := ghcompat.ResolveRepo(ctx, ghcompat.Request{Repo: repoFlag}, os.Getenv, "")
+	repo, fb := ghcompat.ResolveRepo(ctx, ghcompat.Request{Repo: *repoFlag}, os.Getenv, "")
 	if fb != nil {
 		_, _ = fmt.Fprintf(stderr, "forge-cache: cannot resolve repo: %v\n", fb)
 		return 2

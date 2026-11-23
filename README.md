@@ -106,7 +106,7 @@ JSON over the unix socket. `repo` is `host/owner/name`, for example
 | `GET /v1/search` | `forge`, `q`; optional `limit` | Changes matching a forge search query |
 | `POST /v1/invalidate` | JSON body `{"key": <forge.Key>}` | `{}` after the refetch |
 | `GET /v1/status` | none | `{"version", "stats"}` |
-| `GET /v1/watch` | `repo`; optional `number` (omit for the whole repo) | Newline-delimited JSON stream: current state, then every update |
+| `GET /v1/watch` | `repo`; optional `number` (omit for the whole repo), `types` (comma-separated event types), `since` (sequence number) | Newline-delimited JSON stream of change events (no state snapshot) |
 
 The read routes (`changes`, `change`, `search`) also take `max_age` (a Go duration
 such as `1m`, or integer seconds) and `focus=1`. They answer
@@ -131,6 +131,7 @@ curl --unix-socket $XDG_RUNTIME_DIR/forge-cache/forge-cache.sock 'http://x/v1/ch
 forge-cache serve [--socket PATH] [--snapshot PATH] [--lease-ttl D] [--hot-interval D] [--warm-interval D]
 forge-cache pr view|list ...        # gh-compatible subset
 forge-cache invalidate <host/owner/repo>[#N]
+forge-cache watch [-R owner/repo] [--pr N] [--event t1,t2] [--since SEQ]
 forge-cache status                  # daemon version and stats, JSON
 forge-cache version
 ```
@@ -173,6 +174,54 @@ Divergences from `gh`: output is indented on a TTY but not colored; empty
 lists are `[]` rather than `null`; multi-remote repositories are not resolved the
 way `gh` does it.
 
+## Watching changes
+
+`forge-cache watch` prints one JSON change event per line until interrupted. The
+repo comes from `-R`, `GH_REPO` or the git remote; `--pr N` narrows to one PR,
+`--event` to a list of types, and `--since SEQ` replays buffered events after
+that sequence number first. There is no `gh` fallback. Exit codes: 0 on
+interrupt, 1 when the daemon is unavailable or the stream ended (stderr prints
+the `--since` to reconnect with), 2 on bad usage.
+
+Events carry `seq`, `type`, `repo`, `number`, `url`, `old`, `new`, `at` and, for
+`review.submitted`, `review`.
+
+| Type | Emitted when |
+| --- | --- |
+| `checks.started` | the check rollup becomes pending |
+| `checks.completed` | the rollup is pass or fail and differs from before, or the head changed |
+| `review.submitted` | a new non-pending review appears |
+| `review_decision.changed` | the review decision changes |
+| `state.changed` | open, closed or merged changes (a reopen reports `open`) |
+| `draft.changed` | the PR moves between draft and ready |
+| `head.changed` | the head commit changes |
+| `mergeable.changed` | mergeability changes |
+| `resync` | stream marker, not a change: the cursor fell out of the buffer |
+
+Rules for consumers:
+
+- Delivery is at-least-once. A consumer that falls too far behind has its stream
+  closed; reconnect with the last `seq`.
+- Re-read the PR (`--max-age 0`) after every (re)connect and after a `resync`:
+  events are produced by diffing polls, so anything missed shows only in a fresh
+  read.
+- A `checks.completed` can be followed by `checks.started` when slower workflows
+  register after a push. Act on the final `--max-age 0` read, not on the first
+  `checks.completed`.
+- A repo-wide watch (no `--pr`) hot-polls every open PR of the repo, one batched
+  fetch every 25s. A newly opened PR emits no event, since it has no baseline;
+  re-list the repo on reconnect.
+
+## Agent skill
+
+[`skills/forge-cache/SKILL.md`](skills/forge-cache/SKILL.md) teaches agents to
+read PR state through `forge-cache pr` and to wait with `forge-cache watch`
+instead of polling. The flake installs it two ways:
+
+- `nix build .#skill` puts `SKILL.md` at the root of the output.
+- `nix build .#forge-cache` includes it at
+  `share/forge-cache/skills/forge-cache/SKILL.md`.
+
 ## Go client
 
 ```go
@@ -186,8 +235,8 @@ if errors.Is(err, client.ErrUnavailable) {
 }
 ```
 
-`Change`, `ListOpen`, `ByBranch`, `Search`, `Invalidate`, `Status` and `Watch`
-(a channel of `forge.Event`; number 0 watches the whole repo) map to the routes
+`Change`, `ListOpen`, `ByBranch`, `Search`, `Invalidate`, `Status` and `Subscribe`
+(a channel of `forge.ChangeEvent`; number 0 watches the whole repo) map to the routes
 above. `ErrNotFound` means 404; other non-2xx responses are `*APIError`.
 
 ## Out of scope
