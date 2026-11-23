@@ -1,0 +1,33 @@
+{
+ "author": {
+  "id": "MDQ6VXNlcjE3OTMyMzI0",
+  "is_bot": false,
+  "login": "noamsto",
+  "name": "Noam Stolero"
+ },
+ "autoMergeRequest": null,
+ "baseRefName": "main",
+ "headRefName": "feat/212-launch-prdash-outside-a-repo-with-the-al",
+ "headRefOid": "d17de1aa2f343532a3d45c3d544750834aa28327",
+ "isDraft": false,
+ "mergeStateStatus": "UNKNOWN",
+ "mergeable": "UNKNOWN",
+ "number": 213,
+ "reviewDecision": "",
+ "state": "MERGED",
+ "statusCheckRollup": [
+  {
+   "__typename": "CheckRun",
+   "completedAt": "2026-11-23T14:47:27Z",
+   "conclusion": "SUCCESS",
+   "detailsUrl": "https://github.com/noamsto/prdash/actions/runs/45197482936/job/137771730030",
+   "name": "gate",
+   "startedAt": "2026-11-23T14:44:49Z",
+   "status": "COMPLETED",
+   "workflowName": "CI"
+  }
+ ],
+ "title": "feat: launch prdash outside a repo with the all-repos board",
+ "updatedAt": "2026-11-23T16:54:41Z",
+ "url": "https://github.com/noamsto/prdash/pull/213"
+}

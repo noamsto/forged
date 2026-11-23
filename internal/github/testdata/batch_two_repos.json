@@ -1,0 +1,150 @@
+{
+  "data": {
+    "r0": {
+      "pr5": {
+        "number": 5,
+        "url": "https://github.com/acme/alpha/pull/5",
+        "title": "Add retry to the uploader",
+        "author": {"__typename": "User", "login": "ada", "id": "MDQ6VXNlcjE=", "name": "Ada Lovelace"},
+        "state": "OPEN",
+        "isDraft": false,
+        "headRefName": "feat/uploader-retry",
+        "headRefOid": "9f2c1d7e5a3b4c6d8e0f1a2b3c4d5e6f70818293",
+        "baseRefName": "main",
+        "mergeable": "MERGEABLE",
+        "mergeStateStatus": "UNSTABLE",
+        "latestReviews": {"nodes": [
+          {"author": {"__typename": "User", "login": "grace", "id": "MDQ6VXNlcjI=", "name": "Grace Hopper"}, "state": "APPROVED", "submittedAt": "2024-05-01T10:20:00Z"},
+          {"author": {"__typename": "Bot", "login": "copilot"}, "state": "COMMENTED", "submittedAt": "2024-05-01T10:25:00Z"}
+        ]},
+        "reviewDecision": null,
+        "updatedAt": "2024-05-01T10:30:00Z",
+        "autoMergeRequest": {
+          "authorEmail": "ada@example.com",
+          "commitBody": "Retries with backoff.",
+          "commitHeadline": "Add retry to the uploader (#5)",
+          "mergeMethod": "SQUASH",
+          "enabledAt": "2024-05-01T10:15:00Z",
+          "enabledBy": {"login": "ada", "id": "MDQ6VXNlcjE=", "name": "Ada Lovelace"}
+        },
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "state": "PENDING",
+                  "contexts": {
+                    "pageInfo": {"hasNextPage": true},
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "build",
+                        "status": "COMPLETED",
+                        "conclusion": "SUCCESS",
+                        "startedAt": "2024-05-01T10:01:00Z",
+                        "completedAt": "2024-05-01T10:05:00Z",
+                        "detailsUrl": "https://github.com/acme/alpha/actions/runs/100/job/1",
+                        "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}
+                      },
+                      {
+                        "__typename": "CheckRun",
+                        "name": "integration",
+                        "status": "IN_PROGRESS",
+                        "conclusion": null,
+                        "startedAt": "2024-05-01T10:06:00Z",
+                        "completedAt": null,
+                        "detailsUrl": "https://github.com/acme/alpha/actions/runs/100/job/2",
+                        "checkSuite": {"workflowRun": {"workflow": {"name": "CI"}}}
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "ci/lint",
+                        "state": "SUCCESS",
+                        "targetUrl": "https://lint.example.com/runs/7",
+                        "createdAt": "2024-05-01T10:02:00Z"
+                      },
+                      {
+                        "__typename": "StatusContext",
+                        "context": "ci/deploy-preview",
+                        "state": "PENDING",
+                        "targetUrl": "https://deploy.example.com/runs/8",
+                        "createdAt": "2024-05-01T10:03:00Z"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "pr6": {
+        "number": 6,
+        "url": "https://github.com/acme/alpha/pull/6",
+        "title": "Bump golang.org/x/net from 0.20.0 to 0.21.0",
+        "author": {"__typename": "Bot", "login": "dependabot"},
+        "state": "MERGED",
+        "isDraft": false,
+        "headRefName": "dependabot/go_modules/golang.org/x/net-0.21.0",
+        "headRefOid": "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+        "baseRefName": "main",
+        "mergeable": "CONFLICTING",
+        "mergeStateStatus": "DIRTY",
+        "latestReviews": {"nodes": []},
+        "reviewDecision": "APPROVED",
+        "updatedAt": "2024-04-30T08:00:00Z",
+        "autoMergeRequest": null,
+        "commits": {
+          "nodes": [
+            {"commit": {"statusCheckRollup": null}}
+          ]
+        }
+      }
+    },
+    "r1": {
+      "pr1": {
+        "number": 1,
+        "url": "https://github.com/acme/beta/pull/1",
+        "title": "Draft: rework the scheduler",
+        "author": {"__typename": "User", "login": "grace", "id": "MDQ6VXNlcjI=", "name": "Grace Hopper"},
+        "state": "OPEN",
+        "isDraft": true,
+        "headRefName": "wip/scheduler",
+        "headRefOid": "1122334455667788990011223344556677889900",
+        "baseRefName": "develop",
+        "mergeable": "UNKNOWN",
+        "mergeStateStatus": "DRAFT",
+        "latestReviews": {"nodes": []},
+        "reviewDecision": "CHANGES_REQUESTED",
+        "updatedAt": "2024-05-02T09:00:00Z",
+        "autoMergeRequest": null,
+        "commits": {
+          "nodes": [
+            {
+              "commit": {
+                "statusCheckRollup": {
+                  "state": "FAILURE",
+                  "contexts": {
+                    "pageInfo": {"hasNextPage": false},
+                    "nodes": [
+                      {
+                        "__typename": "CheckRun",
+                        "name": "unit",
+                        "status": "COMPLETED",
+                        "conclusion": "FAILURE",
+                        "startedAt": "2024-05-02T08:50:00Z",
+                        "completedAt": "2024-05-02T08:55:00Z",
+                        "detailsUrl": "https://github.com/acme/beta/actions/runs/200/job/1",
+                        "checkSuite": {"workflowRun": {"workflow": {"name": "Test"}}}
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,3 @@
+[default]
+# GitHub GraphQL node IDs are base64 and trip the dictionary.
+extend-ignore-re = ["MDQ6[A-Za-z0-9+/=]+"]
