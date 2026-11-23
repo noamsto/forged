@@ -34,7 +34,6 @@ func Query(forge, q string, limit int) Key {
 	return Key{Kind: KindQuery, Repo: RepoRef{Forge: forge}, Query: q, Limit: limit}
 }
 
-// IsList reports whether the key resolves to a set of changes rather than one.
 func (k Key) IsList() bool { return k.Kind != KindChange }
 
 func (k Key) String() string {

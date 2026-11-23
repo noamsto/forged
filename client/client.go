@@ -103,7 +103,6 @@ type changesResponse struct {
 	Changes []forge.Change `json:"changes"`
 }
 
-// Change returns one change, or ErrNotFound.
 func (c *Client) Change(ctx context.Context, repo forge.RepoRef, n int, o ReadOptions) (forge.Change, error) {
 	q := url.Values{"repo": {repo.String()}, "number": {strconv.Itoa(n)}}
 	o.apply(q)
@@ -117,7 +116,6 @@ func (c *Client) Change(ctx context.Context, repo forge.RepoRef, n int, o ReadOp
 	return r.Changes[0], nil
 }
 
-// ListOpen returns the open changes of repo.
 func (c *Client) ListOpen(ctx context.Context, repo forge.RepoRef, o ReadOptions) ([]forge.Change, error) {
 	return c.list(ctx, "/v1/changes", url.Values{"repo": {repo.String()}, "state": {"open"}}, o)
 }
@@ -145,7 +143,6 @@ func (c *Client) list(ctx context.Context, path string, q url.Values, o ReadOpti
 	return r.Changes, nil
 }
 
-// Invalidate makes the daemon refetch k now.
 func (c *Client) Invalidate(ctx context.Context, k forge.Key) error {
 	body, err := json.Marshal(map[string]forge.Key{"key": k})
 	if err != nil {

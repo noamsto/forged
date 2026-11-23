@@ -86,7 +86,6 @@ func (f *Fake) SetError(method string, err error) {
 	f.failFn[method] = err
 }
 
-// Calls reports how many times method was entered.
 func (f *Fake) Calls(method string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()

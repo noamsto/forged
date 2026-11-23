@@ -41,7 +41,6 @@ func (f Filter) matchesEvent(ev forge.ChangeEvent) bool {
 		(len(f.Types) == 0 || slices.Contains(f.Types, ev.Type))
 }
 
-// key is the entry a subscription keeps fetched.
 func (f Filter) key() forge.Key {
 	if f.Number > 0 {
 		return forge.ChangeKey(f.Repo, f.Number)

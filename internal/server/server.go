@@ -34,7 +34,6 @@ type Handler struct {
 // in-flight requests to finish. It is safe to call more than once.
 func (h *Handler) EndWatches() { h.s.once.Do(func() { close(h.s.closing) }) }
 
-// New returns the daemon's HTTP handler.
 func New(c *cache.Cache, version string) *Handler {
 	s := &server{c: c, version: version, closing: make(chan struct{})}
 	mux := http.NewServeMux()

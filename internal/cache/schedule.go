@@ -11,7 +11,6 @@ import (
 	"github.com/noamsto/forged/forge"
 )
 
-// poll is an entry's scheduler backoff state.
 type poll struct {
 	nextPoll time.Time
 	backoff  time.Duration
@@ -64,7 +63,7 @@ func (c *Cache) hotContent(now time.Time, k forge.Key, e *changeEntry) bool {
 		now.Before(e.focusUntil) || now.Before(e.hotUntil) || c.watched(k))
 }
 
-// changeTier requires c.mu.
+// Requires c.mu.
 func (c *Cache) changeTier(now time.Time, k forge.Key, e *changeEntry, members map[forge.ChangeRef]bool) tier {
 	switch {
 	case !c.leased(now, e.lastRead) && !members[forge.ChangeRef{Repo: k.Repo, Number: k.Number}] && !c.watched(k):
@@ -75,7 +74,6 @@ func (c *Cache) changeTier(now time.Time, k forge.Key, e *changeEntry, members m
 	return tierWarm
 }
 
-// tickPlan is one provider's due work for a tick.
 type tickPlan struct {
 	changes map[forge.ChangeRef]time.Duration // polled directly; value = poll interval
 	lists   []forge.Key                       // refetched directly
@@ -135,7 +133,6 @@ func (c *Cache) evict(now time.Time) {
 	}
 }
 
-// unread reports whether an entry went EvictAfter without a read or load.
 func (c *Cache) unread(now, lastRead, loadedAt time.Time) bool {
 	return now.Sub(lastRead) >= c.o.EvictAfter && now.Sub(loadedAt) >= c.o.EvictAfter
 }
@@ -339,7 +336,6 @@ func (c *Cache) probe(ctx context.Context, name string, r forge.RepoRef, rp *rep
 	}
 }
 
-// Run ticks every Options.Tick until ctx is done.
 func (c *Cache) Run(ctx context.Context) {
 	var arm func()
 	arm = func() {

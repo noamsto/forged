@@ -17,7 +17,6 @@ type Stats struct {
 	PausedUntil  map[string]time.Time // rate-limited providers by key
 }
 
-// meter counts the cache's upstream calls.
 type meter struct {
 	mu       sync.Mutex
 	inflight int

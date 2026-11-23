@@ -1,5 +1,5 @@
 // Package cache is the freshness engine: max-age reads over forge providers
-// with singleflight, list fill-through and (later) background polling.
+// with singleflight, list fill-through and background polling.
 package cache
 
 import (
@@ -160,7 +160,6 @@ func (c *Cache) Read(ctx context.Context, k forge.Key, o ReadOpts) (Result, erro
 	return c.result(k)
 }
 
-// provider returns the name of the provider serving k.
 func (c *Cache) provider(k forge.Key) (string, error) {
 	if k.Kind == forge.KindQuery {
 		// Query keys name only the forge; pick its lowest-sorting host for determinism.
@@ -194,7 +193,6 @@ func (c *Cache) touch(k forge.Key, focus bool) {
 	}
 }
 
-// batcher returns the batcher of a provider name that provider(k) returned.
 func (c *Cache) batcher(name string) *batcher {
 	b, ok := c.batchers[name]
 	if !ok {
@@ -203,7 +201,6 @@ func (c *Cache) batcher(name string) *batcher {
 	return b
 }
 
-// knownProvider returns the provider of a name that provider(k) returned.
 func (c *Cache) knownProvider(name string) forge.Provider {
 	p, ok := c.providers[name]
 	if !ok {
