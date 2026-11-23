@@ -10,7 +10,11 @@
     git-hooks-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
-  outputs = inputs @ {flake-parts, ...}:
+  outputs = inputs @ {
+    flake-parts,
+    self,
+    ...
+  }:
     flake-parts.lib.mkFlake {inherit inputs;} {
       systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
 
@@ -18,6 +22,8 @@
         inputs.treefmt-nix.flakeModule
         inputs.git-hooks-nix.flakeModule
       ];
+
+      flake.homeManagerModules.default = import ./nix/hm-module.nix self;
 
       perSystem = {
         pkgs,
@@ -27,7 +33,7 @@
         # The same dependency pin the binary is built with. buildGoModule wires
         # GOPATH/GOMODCACHE to a fetched, read-only module cache, so the
         # static-analysis checks run offline in the Nix sandbox.
-        vendorHash = null;
+        vendorHash = "sha256-RkmZ4qyOWyGaQkgmR1Ak2K0NLZa/7C4wfivddmPPJyc=";
         version = "0.1.0";
       in {
         packages.forge-cache = pkgs.buildGoModule {
@@ -35,7 +41,14 @@
           inherit version;
           src = ./.;
           inherit vendorHash;
+          # checks.go-gate runs the suite.
+          doCheck = false;
           ldflags = ["-s" "-w" "-X github.com/noamsto/forge-cache/internal/cli.version=${version}"];
+          postInstall = ''
+            install -Dm644 packaging/systemd/forge-cache.socket packaging/systemd/forge-cache.service \
+              -t $out/share/systemd/user
+            substituteInPlace $out/share/systemd/user/forge-cache.service --subst-var out
+          '';
           meta = {
             description = "Shared, forge-agnostic PR state cache daemon";
             mainProgram = "forge-cache";

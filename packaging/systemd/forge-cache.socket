@@ -1,0 +1,10 @@
+[Unit]
+Description=forge-cache PR state cache socket
+
+[Socket]
+ListenStream=%t/forge-cache/forge-cache.sock
+SocketMode=0600
+DirectoryMode=0700
+
+[Install]
+WantedBy=sockets.target
