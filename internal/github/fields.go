@@ -10,6 +10,7 @@ import (
 )
 
 const changeFields = `number url title author{__typename login ...on User{id name}} state isDraft headRefName headRefOid baseRefName mergeable mergeStateStatus reviewDecision updatedAt ` +
+	`latestReviews(first:20){nodes{author{__typename login ...on User{id name}} state submittedAt}} ` +
 	`autoMergeRequest{authorEmail commitBody commitHeadline mergeMethod enabledAt enabledBy{login ...on User{id name}}} ` +
 	`commits(last:1){nodes{commit{statusCheckRollup{state contexts(first:100){pageInfo{hasNextPage} nodes{__typename ` +
 	`...on CheckRun{name status conclusion startedAt completedAt detailsUrl checkSuite{workflowRun{workflow{name}}}} ` +
@@ -57,6 +58,13 @@ type wirePR struct {
 	MergeStateStatus string     `json:"mergeStateStatus"`
 	ReviewDecision   string     `json:"reviewDecision"`
 	UpdatedAt        time.Time  `json:"updatedAt"`
+	LatestReviews    struct {
+		Nodes []struct {
+			Author      *wireActor `json:"author"`
+			State       string     `json:"state"`
+			SubmittedAt time.Time  `json:"submittedAt"`
+		} `json:"nodes"`
+	} `json:"latestReviews"`
 	AutoMergeRequest *struct {
 		AuthorEmail    *string    `json:"authorEmail"`
 		CommitBody     *string    `json:"commitBody"`
@@ -98,6 +106,9 @@ func mapChange(repo forge.RepoRef, w wirePR) forge.Change {
 		Checks:         forge.Checks{Rollup: forge.RollupNone},
 	}
 	c.Head.Ref, c.Head.SHA, c.Base.Ref = w.HeadRefName, w.HeadRefOid, w.BaseRefName
+	for _, r := range w.LatestReviews.Nodes {
+		c.Reviews = append(c.Reviews, forge.Review{Author: mapActor(r.Author), State: strings.ToLower(r.State), SubmittedAt: r.SubmittedAt})
+	}
 	if am := w.AutoMergeRequest; am != nil {
 		c.AutoMerge = &forge.AutoMerge{
 			Method:         strings.ToLower(am.MergeMethod),

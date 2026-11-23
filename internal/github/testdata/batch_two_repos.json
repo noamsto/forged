@@ -13,6 +13,10 @@
         "baseRefName": "main",
         "mergeable": "MERGEABLE",
         "mergeStateStatus": "UNSTABLE",
+        "latestReviews": {"nodes": [
+          {"author": {"__typename": "User", "login": "grace", "id": "MDQ6VXNlcjI=", "name": "Grace Hopper"}, "state": "APPROVED", "submittedAt": "2024-05-01T10:20:00Z"},
+          {"author": {"__typename": "Bot", "login": "copilot"}, "state": "COMMENTED", "submittedAt": "2024-05-01T10:25:00Z"}
+        ]},
         "reviewDecision": null,
         "updatedAt": "2024-05-01T10:30:00Z",
         "autoMergeRequest": {
@@ -86,6 +90,7 @@
         "baseRefName": "main",
         "mergeable": "CONFLICTING",
         "mergeStateStatus": "DIRTY",
+        "latestReviews": {"nodes": []},
         "reviewDecision": "APPROVED",
         "updatedAt": "2024-04-30T08:00:00Z",
         "autoMergeRequest": null,
@@ -109,6 +114,7 @@
         "baseRefName": "develop",
         "mergeable": "UNKNOWN",
         "mergeStateStatus": "DRAFT",
+        "latestReviews": {"nodes": []},
         "reviewDecision": "CHANGES_REQUESTED",
         "updatedAt": "2024-05-02T09:00:00Z",
         "autoMergeRequest": null,

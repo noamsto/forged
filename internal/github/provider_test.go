@@ -242,6 +242,16 @@ func TestMapChange(t *testing.T) {
 			t.Errorf("UpdatedAt = %v", c.UpdatedAt)
 		}
 
+		wantReviews := []forge.Review{
+			{Author: forge.Actor{Login: "grace", Name: "Grace Hopper", ID: "MDQ6VXNlcjI="}, State: "approved", SubmittedAt: ts("2024-05-01T10:20:00Z")},
+			{Author: forge.Actor{Login: "copilot", IsBot: true}, State: "commented", SubmittedAt: ts("2024-05-01T10:25:00Z")},
+		}
+		if !slices.EqualFunc(c.Reviews, wantReviews, func(a, b forge.Review) bool {
+			return a.Author == b.Author && a.State == b.State && a.SubmittedAt.Equal(b.SubmittedAt)
+		}) {
+			t.Errorf("Reviews = %+v, want %+v", c.Reviews, wantReviews)
+		}
+
 		am := c.AutoMerge
 		if am == nil {
 			t.Fatal("AutoMerge = nil")
@@ -306,6 +316,9 @@ func TestMapChange(t *testing.T) {
 		}
 		if c.AutoMerge != nil {
 			t.Errorf("AutoMerge = %+v, want nil", c.AutoMerge)
+		}
+		if len(c.Reviews) != 0 {
+			t.Errorf("Reviews = %+v, want none", c.Reviews)
 		}
 		if c.Checks.Rollup != forge.RollupNone || len(c.Checks.Runs) != 0 || c.Checks.Truncated {
 			t.Errorf("checks = %+v, want none/empty/not truncated", c.Checks)
