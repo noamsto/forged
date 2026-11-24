@@ -21,7 +21,6 @@ const (
 	maxReconcileRetry = 5 * time.Minute
 )
 
-// Options configures a Runner.
 type Options struct {
 	Config Config
 	Source Source
