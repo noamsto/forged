@@ -177,6 +177,7 @@ func (w wireRule) applyBuiltin(r *Rule) error {
 	}{
 		{"on", w.On != ""}, {"from", w.From != ""}, {"to", w.To != ""},
 		{"command", len(w.Command) > 0}, {"conclusion", w.Conclusion != ""},
+		{"timeout", w.Timeout != ""},
 	} {
 		if f.set {
 			return fmt.Errorf("%s is not allowed with builtin %q", f.name, w.Builtin)
@@ -211,6 +212,11 @@ func (w wireRule) validateCommand(r Rule) error {
 	if !slices.Contains(eventTypes, r.On) {
 		return fmt.Errorf("on %q: want an event type, one of %v", w.On, eventTypes)
 	}
+	for _, f := range []struct{ name, val string }{{"from", r.From}, {"to", r.To}} {
+		if err := checkEventValue(r.On, f.name, f.val); err != nil {
+			return err
+		}
+	}
 	if placeholderToken.MatchString(r.Command[0]) {
 		return fmt.Errorf("command[0] must not contain placeholders")
 	}
@@ -222,6 +228,34 @@ func (w wireRule) validateCommand(r Rule) error {
 		}
 	}
 	return nil
+}
+
+// eventValues lists the Old/New strings each event type carries. Events absent
+// here (head.changed, review.submitted) carry free-form values.
+var eventValues = map[forge.EventType][]string{
+	forge.EventStateChanged: {string(forge.StateOpen), string(forge.StateClosed), string(forge.StateMerged)},
+	forge.EventDraftChanged: {"ready", "draft"},
+	forge.EventChecksStarted: {
+		string(forge.RollupPass), string(forge.RollupFail), string(forge.RollupPending), string(forge.RollupNone),
+	},
+	forge.EventChecksCompleted: {
+		string(forge.RollupPass), string(forge.RollupFail), string(forge.RollupPending), string(forge.RollupNone),
+	},
+	forge.EventReviewDecisionChanged: {
+		string(forge.ReviewApproved), string(forge.ReviewChangesRequested),
+		string(forge.ReviewRequired), string(forge.ReviewNone),
+	},
+	forge.EventMergeableChanged: {
+		string(forge.MergeableClean), string(forge.MergeableConflict), string(forge.MergeableUnknown),
+	},
+}
+
+func checkEventValue(on forge.EventType, field, val string) error {
+	allowed, ok := eventValues[on]
+	if val == "" || !ok || slices.Contains(allowed, val) {
+		return nil
+	}
+	return fmt.Errorf("%s %q: not a value of %s, want one of %v", field, val, on, allowed)
 }
 
 func expandHome(p string) (string, error) {

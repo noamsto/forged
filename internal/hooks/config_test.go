@@ -118,6 +118,7 @@ command = ["true"]
 		{"builtin with from", "[[rule]]\nrepos = [\"a/b\"]\nbuiltin = \"remove-merged-worktree\"\ncheckout = \"/x\"\nfrom = \"open\"\n", "from"},
 		{"builtin with to", "[[rule]]\nrepos = [\"a/b\"]\nbuiltin = \"remove-merged-worktree\"\ncheckout = \"/x\"\nto = \"merged\"\n", "to"},
 		{"builtin with command", "[[rule]]\nrepos = [\"a/b\"]\nbuiltin = \"remove-merged-worktree\"\ncheckout = \"/x\"\ncommand = [\"true\"]\n", "command"},
+		{"builtin with timeout", "[[rule]]\nrepos = [\"a/b\"]\nbuiltin = \"remove-merged-worktree\"\ncheckout = \"/x\"\ntimeout = \"5s\"\n", "timeout is not allowed"},
 		{"both command and builtin", "[[rule]]\nrepos = [\"a/b\"]\nbuiltin = \"remove-merged-worktree\"\ncheckout = \"/x\"\ncommand = [\"true\"]\n", "command"},
 		{"neither command nor builtin", "[[rule]]\nrepos = [\"a/b\"]\non = \"state.changed\"\n", "command"},
 		{"empty command", "[[rule]]\nrepos = [\"a/b\"]\non = \"state.changed\"\ncommand = []\n", "command"},
@@ -146,6 +147,50 @@ command = ["true"]
 				t.Fatalf("err = %v, want mention of %q", err, tt.want)
 			}
 		})
+	}
+}
+
+func TestConfigFromToValues(t *testing.T) {
+	rule := func(on, field, val string) string {
+		return "[[rule]]\nrepos = [\"a/b\"]\non = \"" + on + "\"\ncommand = [\"true\"]\n" + field + " = \"" + val + "\"\n"
+	}
+	tests := []struct {
+		on  string
+		ok  []string
+		bad []string
+	}{
+		{"state.changed", []string{"open", "closed", "merged"}, []string{"Merged", "merge"}},
+		{"draft.changed", []string{"ready", "draft"}, []string{"true", "Draft"}},
+		{"checks.started", []string{"pass", "fail", "pending", "none"}, []string{"success", "failure"}},
+		{"checks.completed", []string{"pass", "fail", "pending", "none"}, []string{"success", "failure"}},
+		{"review_decision.changed", []string{"approved", "changes_requested", "review_required", "none"}, []string{"APPROVED", "approve"}},
+		{"mergeable.changed", []string{"clean", "conflict", "unknown"}, []string{"conflicting", "mergeable"}},
+		{"head.changed", []string{"abc123", "anything"}, nil},
+		{"review.submitted", []string{"approved", "commented", "whatever"}, nil},
+	}
+	for _, tt := range tests {
+		for _, field := range []string{"from", "to"} {
+			for _, v := range tt.ok {
+				t.Run(tt.on+"/"+field+"/ok/"+v, func(t *testing.T) {
+					if _, err := Parse([]byte(rule(tt.on, field, v))); err != nil {
+						t.Fatal(err)
+					}
+				})
+			}
+			for _, v := range tt.bad {
+				t.Run(tt.on+"/"+field+"/bad/"+v, func(t *testing.T) {
+					_, err := Parse([]byte(rule(tt.on, field, v)))
+					if err == nil {
+						t.Fatal("want error")
+					}
+					for _, want := range []string{field, v, tt.on, tt.ok[0]} {
+						if !strings.Contains(err.Error(), want) {
+							t.Fatalf("err = %v, want mention of %q", err, want)
+						}
+					}
+				})
+			}
+		}
 	}
 }
 
