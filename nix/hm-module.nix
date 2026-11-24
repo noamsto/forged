@@ -117,8 +117,9 @@ in {
         };
         Service = {
           Environment = "PATH=${lib.makeBinPath ([cfg.ghPackage cfg.hooks.gitPackage] ++ cfg.hooks.extraPackages)}";
-          ExecStart = "${cfg.package}/bin/forged hooks";
+          ExecStart = lib.escapeShellArgs ["${cfg.package}/bin/forged" "hooks" "--config" "${config.xdg.configHome}/forged/hooks.toml"];
           Restart = "on-failure";
+          RestartPreventExitStatus = 2;
           RestartSec = 10;
         };
         Install.WantedBy = ["default.target"];

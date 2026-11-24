@@ -276,8 +276,9 @@ func TestReconcileWorktrees(t *testing.T) {
 		},
 		errs: map[string]error{"feat/boom": errors.New("daemon down")},
 	}
-	if err := reconcileWorktrees(context.Background(), wtRule(repo), src, "ME", wtLogger()); err != nil {
-		t.Fatal(err)
+	err := reconcileWorktrees(context.Background(), wtRule(repo), src, "ME", wtLogger())
+	if err == nil || !strings.Contains(err.Error(), "feat/boom") {
+		t.Fatalf("err = %v, want one naming feat/boom", err)
 	}
 	for p, wantGone := range map[string]bool{merged: true, late: true, open: false, boom: false, other: false} {
 		if wtExists(p) == wantGone {
@@ -322,8 +323,8 @@ func TestReconcileWorktreesContinuesAfterRemoveError(t *testing.T) {
 		"feat/bad":  {wtChange("feat/bad", badSHA, forge.StateMerged)},
 		"feat/good": {wtChange("feat/good", sha(good), forge.StateMerged)},
 	}}
-	if err := reconcileWorktrees(context.Background(), wtRule(repo), src, "me", wtLogger()); err != nil {
-		t.Fatal(err)
+	if err := reconcileWorktrees(context.Background(), wtRule(repo), src, "me", wtLogger()); err == nil || !strings.Contains(err.Error(), "feat/bad") {
+		t.Fatalf("err = %v, want one naming feat/bad", err)
 	}
 	if wtExists(good) {
 		t.Error("good worktree not removed after an earlier failure")

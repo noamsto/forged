@@ -267,17 +267,18 @@ Each `[[rule]]`:
 | `name` | Label for logs |
 | `repos` | Required list of `owner/name`. This is also the subscription set: events of other repos are never seen |
 | `on` | Event type (see [Watching changes](#watching-changes)). Required for `command` rules, forbidden for builtins |
-| `from`, `to` | Match the event's `old` / `new` value, for example `to = "merged"` |
+| `from`, `to` | Match the event's `old` / `new` value, for example `to = "merged"`. Validated against the event type's values at load |
 | `conclusion` | `pass` or `fail`; only with `on = "checks.completed"`, matches the event's `new` |
 | `author` | PR author login. Default: the viewer. `"*"` = anyone |
 | `branch` | Glob on the PR's head branch; `*` matches any run of characters including `/`, `?` one character |
 | `command` | Argv array, run without a shell. Exactly one of `command` and `builtin` |
 | `builtin` | `remove-merged-worktree` |
 | `checkout` | Builtin only: absolute path (a leading `~` is expanded) of a clone of the repo. Never checked at load, only when a rule runs |
-| `timeout` | Go duration, default `60s`. The command is killed when it expires |
+| `timeout` | `command` rules only (rejected on builtins). Go duration, default `60s`. The command is killed when it expires |
 
 Events carry no branch or author, so for each event the runner reads the change
-through the daemon and filters on that. If the read fails the rule is skipped.
+through the daemon (a read at most 1h old) and filters on that. If the read
+fails the event is logged and dropped.
 Rules run one at a time, in order.
 
 ### Placeholders
@@ -313,8 +314,9 @@ daemon. Stdin is JSON, the event and the change as the daemon serves them:
 {"event": {"seq": 1, "type": "state.changed", "repo": {}, "number": 7, "old": "open", "new": "merged"}, "change": {}}
 ```
 
-The command's output is captured, capped and logged. A failing command is
-logged, not retried.
+The command's output is captured and capped. It is logged at warn when the
+command fails; success is logged at debug level only. A failing command is not
+retried.
 
 ### Safety model
 
@@ -358,9 +360,10 @@ Events are edges, so a merge while the runner is down would be missed. Builtin
 rules are therefore also level-triggered: at start, after every reconnect
 without a cursor, and on a `resync` event, the runner checks each worktree of
 `checkout` and removes those whose branch has a merged PR passing the rule's
-filters. `command` rules are edge-only and delivery is at-least-once, so write
-commands to be safe to run twice, and expect no catch-up for events missed
-while stopped.
+filters. Only this reconcile pass is retried until it succeeds. Delivery to hooks is
+at-most-once: an event whose change read or command fails is logged and
+dropped, and `command` rules are edge-only, so expect no catch-up for events
+missed while stopped or failed.
 
 ### Install
 
@@ -387,7 +390,10 @@ services.forged.hooks = {
 
 The module writes `~/.config/forged/hooks.toml`, defines `forged-hooks.service`
 (requires `forged.socket`, restarts on config change) and puts `gh`, `git` and
-`extraPackages` on its `PATH`.
+`extraPackages` on its `PATH`. The unit restarts on failure, but not on exit
+status 2 (bad config or usage), which a restart cannot fix. Config is read once
+at startup, so restart the service after editing it (Home Manager restarts it on
+change).
 
 Manually: link `share/systemd/user/forged-hooks.service` into
 `~/.config/systemd/user/`, then:
@@ -397,7 +403,8 @@ systemctl --user daemon-reload
 systemctl --user enable --now forged-hooks.service
 ```
 
-The unit's `PATH` must contain `gh`, `git` and whatever your commands run.
+The unit's `PATH` must contain `gh`, `git` and whatever your commands run. After
+editing the config, run `systemctl --user restart forged-hooks`.
 
 ## Agent skill
 

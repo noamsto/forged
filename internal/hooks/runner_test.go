@@ -303,6 +303,34 @@ func TestRunnerReconcileOnStartupAndResync(t *testing.T) {
 	}
 }
 
+func TestRunnerReconcileRetriesUntilSuccess(t *testing.T) {
+	src := &runSource{subs: []runSub{{hold: true}}}
+	var calls atomic.Int32
+	r, err := New(Options{Config: Config{Rules: []Rule{runBuiltinRule()}}, Source: src, Viewer: runViewer("me"), Log: runLog(), Sleep: runNoSleep})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.reconcile = func(context.Context, Rule, Source, string, *slog.Logger) error {
+		if calls.Add(1) == 1 {
+			return errors.New("daemon down")
+		}
+		return nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- r.Run(ctx) }()
+	runEventually(t, "retry", func() bool { return calls.Load() >= 2 })
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	<-done
+	if n := calls.Load(); n != 2 {
+		t.Errorf("reconcile calls = %d, want 2 (one failure, one retry, then none)", n)
+	}
+	if n := len(src.subscribeCalls()); n != 1 {
+		t.Errorf("subscribe calls = %d, want 1", n)
+	}
+}
+
 func TestRunnerReconnect(t *testing.T) {
 	src := &runSource{
 		subs: []runSub{

@@ -3,6 +3,7 @@ package hooks
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os/exec"
@@ -131,6 +132,7 @@ func reconcileWorktrees(ctx context.Context, r Rule, src Source, viewer string, 
 	if err != nil {
 		return err
 	}
+	var errs []error
 	for _, wt := range entries {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -145,6 +147,7 @@ func reconcileWorktrees(ctx context.Context, r Rule, src Source, viewer string, 
 				return ctx.Err()
 			}
 			log.Warn("reconcile: reading changes by branch failed", "rule", r.Name, "branch", branch, "err", err)
+			errs = append(errs, fmt.Errorf("branch %s: %w", branch, err))
 			continue
 		}
 		for _, ch := range changes {
@@ -156,8 +159,9 @@ func reconcileWorktrees(ctx context.Context, r Rule, src Source, viewer string, 
 					return ctx.Err()
 				}
 				log.Warn("reconcile: removing worktree failed", "rule", r.Name, "branch", branch, "err", err)
+				errs = append(errs, fmt.Errorf("branch %s: %w", branch, err))
 			}
 		}
 	}
-	return nil
+	return errors.Join(errs...)
 }

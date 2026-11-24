@@ -113,6 +113,7 @@ func (r *Runner) Run(ctx context.Context) error {
 func (r *Runner) watchRepo(ctx context.Context, repo forge.RepoRef) {
 	log := r.log.With("repo", repo.String())
 	var cursor *uint64
+	reconcilePending := false
 	delay := minBackoff
 	for ctx.Err() == nil {
 		events, err := r.src.Subscribe(ctx, client.SubscribeOptions{Repo: repo, Since: cursor})
@@ -122,9 +123,12 @@ func (r *Runner) watchRepo(ctx context.Context, repo forge.RepoRef) {
 		} else {
 			// Reconciling after subscribing means nothing is lost in between.
 			if cursor == nil {
-				r.reconcileRepo(ctx, repo, log)
+				reconcilePending = true
 			}
-			got = r.consume(ctx, repo, events, &cursor, log)
+			if reconcilePending {
+				reconcilePending = r.reconcileRepo(ctx, repo, log) != nil
+			}
+			got = r.consume(ctx, repo, events, &cursor, &reconcilePending, log)
 		}
 		if ctx.Err() != nil {
 			return
@@ -140,13 +144,30 @@ func (r *Runner) watchRepo(ctx context.Context, repo forge.RepoRef) {
 }
 
 // consume handles events until the stream ends or ctx is done, reporting
-// whether any event arrived.
-func (r *Runner) consume(ctx context.Context, repo forge.RepoRef, events <-chan forge.ChangeEvent, cursor **uint64, log *slog.Logger) bool {
+// whether any event arrived. While *reconcilePending is set it retries the
+// reconcile on the backoff schedule, so a quiet stream still converges.
+func (r *Runner) consume(ctx context.Context, repo forge.RepoRef, events <-chan forge.ChangeEvent, cursor **uint64, reconcilePending *bool, log *slog.Logger) bool {
 	got := false
+	retryDelay := minBackoff
+	var retry chan struct{}
 	for {
+		if *reconcilePending && retry == nil {
+			retry = make(chan struct{}, 1)
+			go func(c chan<- struct{}, d time.Duration) {
+				if r.sleep(ctx, d) == nil {
+					c <- struct{}{}
+				}
+			}(retry, retryDelay)
+			retryDelay = min(retryDelay*2, maxBackoff)
+		}
 		select {
 		case <-ctx.Done():
 			return got
+		case <-retry:
+			retry = nil
+			if *reconcilePending {
+				*reconcilePending = r.reconcileRepo(ctx, repo, log) != nil
+			}
 		case ev, ok := <-events:
 			if !ok {
 				log.Info("event stream ended")
@@ -156,7 +177,7 @@ func (r *Runner) consume(ctx context.Context, repo forge.RepoRef, events <-chan 
 			seq := ev.Seq
 			*cursor = &seq
 			if ev.Type == forge.EventResync {
-				r.reconcileRepo(ctx, repo, log)
+				*reconcilePending = r.reconcileRepo(ctx, repo, log) != nil
 				continue
 			}
 			r.handle(ctx, ev, log)
@@ -164,20 +185,25 @@ func (r *Runner) consume(ctx context.Context, repo forge.RepoRef, events <-chan 
 	}
 }
 
-func (r *Runner) reconcileRepo(ctx context.Context, repo forge.RepoRef, log *slog.Logger) {
+// reconcileRepo returns the joined failures of every matching rule, or nil
+// when ctx is done (shutdown is not a failure to retry).
+func (r *Runner) reconcileRepo(ctx context.Context, repo forge.RepoRef, log *slog.Logger) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	var errs []error
 	for _, rule := range r.rules {
 		if rule.Builtin != BuiltinRemoveMergedWorktree || !slices.Contains(rule.Repos, repo) {
 			continue
 		}
 		if ctx.Err() != nil {
-			return
+			return nil
 		}
 		if err := r.reconcile(ctx, rule, r.src, r.viewer, log); err != nil && ctx.Err() == nil {
 			log.Warn("reconcile failed", "rule", rule.Name, "err", err)
+			errs = append(errs, err)
 		}
 	}
+	return errors.Join(errs...)
 }
 
 func (r *Runner) handle(ctx context.Context, ev forge.ChangeEvent, log *slog.Logger) {
@@ -188,7 +214,10 @@ func (r *Runner) handle(ctx context.Context, ev forge.ChangeEvent, log *slog.Log
 			continue
 		}
 		if !fetched {
-			c, err := r.src.Change(ctx, ev.Repo, ev.Number, client.ReadOptions{})
+			// The event came from the cached value, so any age is acceptable;
+			// the default max-age could fail during a forge rate-limit pause.
+			maxAge := time.Hour
+			c, err := r.src.Change(ctx, ev.Repo, ev.Number, client.ReadOptions{MaxAge: &maxAge})
 			if err != nil {
 				if ctx.Err() == nil {
 					log.Warn("reading the change failed; skipping its rules", "number", ev.Number, "type", ev.Type, "err", err)
