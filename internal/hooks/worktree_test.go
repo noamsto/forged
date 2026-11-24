@@ -1,6 +1,7 @@
 package hooks
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -323,8 +324,13 @@ func TestReconcileWorktreesContinuesAfterRemoveError(t *testing.T) {
 		"feat/bad":  {wtChange("feat/bad", badSHA, forge.StateMerged)},
 		"feat/good": {wtChange("feat/good", sha(good), forge.StateMerged)},
 	}}
-	if err := reconcileWorktrees(context.Background(), wtRule(repo), src, "me", wtLogger()); err == nil || !strings.Contains(err.Error(), "feat/bad") {
-		t.Fatalf("err = %v, want one naming feat/bad", err)
+	var logs bytes.Buffer
+	log := slog.New(slog.NewTextHandler(&logs, nil))
+	if err := reconcileWorktrees(context.Background(), wtRule(repo), src, "me", log); err != nil {
+		t.Fatalf("err = %v, want nil: a permanent removal failure must not trigger a retry", err)
+	}
+	if !strings.Contains(logs.String(), "removing worktree failed") || !strings.Contains(logs.String(), "feat/bad") {
+		t.Errorf("removal failure not logged with its branch: %s", logs.String())
 	}
 	if wtExists(good) {
 		t.Error("good worktree not removed after an earlier failure")

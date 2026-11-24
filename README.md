@@ -267,7 +267,7 @@ Each `[[rule]]`:
 | `name` | Label for logs |
 | `repos` | Required list of `owner/name`. This is also the subscription set: events of other repos are never seen |
 | `on` | Event type (see [Watching changes](#watching-changes)). Required for `command` rules, forbidden for builtins |
-| `from`, `to` | Match the event's `old` / `new` value, for example `to = "merged"`. Validated against the event type's values at load |
+| `from`, `to` | Match the event's `old` / `new` value, for example `to = "merged"`. Validated at load against the values that event type can carry: for example `checks.started` only has `to = "pending"`, `checks.completed` only `pass` or `fail`, and `review.submitted` has no `from` |
 | `conclusion` | `pass` or `fail`; only with `on = "checks.completed"`, matches the event's `new` |
 | `author` | PR author login. Default: the viewer. `"*"` = anyone |
 | `branch` | Glob on the PR's head branch; `*` matches any run of characters including `/`, `?` one character |

@@ -154,36 +154,56 @@ func TestConfigFromToValues(t *testing.T) {
 	rule := func(on, field, val string) string {
 		return "[[rule]]\nrepos = [\"a/b\"]\non = \"" + on + "\"\ncommand = [\"true\"]\n" + field + " = \"" + val + "\"\n"
 	}
+	type values struct{ ok, bad []string }
+	rollup := []string{"pass", "fail", "pending", "none"}
 	tests := []struct {
-		on  string
-		ok  []string
-		bad []string
+		on       string
+		from, to values
 	}{
-		{"state.changed", []string{"open", "closed", "merged"}, []string{"Merged", "merge"}},
-		{"draft.changed", []string{"ready", "draft"}, []string{"true", "Draft"}},
-		{"checks.started", []string{"pass", "fail", "pending", "none"}, []string{"success", "failure"}},
-		{"checks.completed", []string{"pass", "fail", "pending", "none"}, []string{"success", "failure"}},
-		{"review_decision.changed", []string{"approved", "changes_requested", "review_required", "none"}, []string{"APPROVED", "approve"}},
-		{"mergeable.changed", []string{"clean", "conflict", "unknown"}, []string{"conflicting", "mergeable"}},
-		{"head.changed", []string{"abc123", "anything"}, nil},
-		{"review.submitted", []string{"approved", "commented", "whatever"}, nil},
+		{"state.changed",
+			values{[]string{"open", "closed", "merged"}, []string{"Merged", "merge"}},
+			values{[]string{"open", "closed", "merged"}, []string{"Merged", "merge"}}},
+		{"draft.changed",
+			values{[]string{"ready", "draft"}, []string{"true", "Draft"}},
+			values{[]string{"ready", "draft"}, []string{"true", "Draft"}}},
+		{"checks.started",
+			values{[]string{"pass", "fail", "none"}, []string{"pending", "success"}},
+			values{[]string{"pending"}, []string{"pass", "fail", "none", "success"}}},
+		{"checks.completed",
+			values{rollup, []string{"success", "failure"}},
+			values{[]string{"pass", "fail"}, []string{"pending", "none", "success"}}},
+		{"review_decision.changed",
+			values{[]string{"approved", "changes_requested", "review_required", "none"}, []string{"APPROVED", "approve"}},
+			values{[]string{"approved", "changes_requested", "review_required", "none"}, []string{"APPROVED", "approve"}}},
+		{"mergeable.changed",
+			values{[]string{"clean", "conflict", "unknown"}, []string{"conflicting", "mergeable"}},
+			values{[]string{"clean", "conflict", "unknown"}, []string{"conflicting", "mergeable"}}},
+		{"head.changed",
+			values{[]string{"abc123", "anything"}, nil},
+			values{[]string{"abc123", "anything"}, nil}},
+		{"review.submitted",
+			values{nil, []string{"approved", "anything"}},
+			values{[]string{"approved", "commented", "whatever"}, nil}},
 	}
 	for _, tt := range tests {
-		for _, field := range []string{"from", "to"} {
-			for _, v := range tt.ok {
-				t.Run(tt.on+"/"+field+"/ok/"+v, func(t *testing.T) {
-					if _, err := Parse([]byte(rule(tt.on, field, v))); err != nil {
+		for _, f := range []struct {
+			name string
+			v    values
+		}{{"from", tt.from}, {"to", tt.to}} {
+			for _, v := range f.v.ok {
+				t.Run(tt.on+"/"+f.name+"/ok/"+v, func(t *testing.T) {
+					if _, err := Parse([]byte(rule(tt.on, f.name, v))); err != nil {
 						t.Fatal(err)
 					}
 				})
 			}
-			for _, v := range tt.bad {
-				t.Run(tt.on+"/"+field+"/bad/"+v, func(t *testing.T) {
-					_, err := Parse([]byte(rule(tt.on, field, v)))
+			for _, v := range f.v.bad {
+				t.Run(tt.on+"/"+f.name+"/bad/"+v, func(t *testing.T) {
+					_, err := Parse([]byte(rule(tt.on, f.name, v)))
 					if err == nil {
 						t.Fatal("want error")
 					}
-					for _, want := range []string{field, v, tt.on, tt.ok[0]} {
+					for _, want := range []string{f.name, v, tt.on} {
 						if !strings.Contains(err.Error(), want) {
 							t.Fatalf("err = %v, want mention of %q", err, want)
 						}

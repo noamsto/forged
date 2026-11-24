@@ -158,8 +158,9 @@ func reconcileWorktrees(ctx context.Context, r Rule, src Source, viewer string, 
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
+				// Not returned: a local removal failure never self-resolves, and a
+				// returned error would make the runner retry (and re-query the forge) forever.
 				log.Warn("reconcile: removing worktree failed", "rule", r.Name, "branch", branch, "err", err)
-				errs = append(errs, fmt.Errorf("branch %s: %w", branch, err))
 			}
 		}
 	}

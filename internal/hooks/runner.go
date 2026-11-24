@@ -17,6 +17,8 @@ import (
 const (
 	minBackoff = time.Second
 	maxBackoff = 30 * time.Second
+	// maxReconcileRetry bounds how often a failing reconcile re-queries the forge.
+	maxReconcileRetry = 5 * time.Minute
 )
 
 // Options configures a Runner.
@@ -158,7 +160,7 @@ func (r *Runner) consume(ctx context.Context, repo forge.RepoRef, events <-chan 
 					c <- struct{}{}
 				}
 			}(retry, retryDelay)
-			retryDelay = min(retryDelay*2, maxBackoff)
+			retryDelay = min(retryDelay*2, maxReconcileRetry)
 		}
 		select {
 		case <-ctx.Done():

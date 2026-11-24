@@ -230,30 +230,49 @@ func (w wireRule) validateCommand(r Rule) error {
 	return nil
 }
 
-// eventValues lists the Old/New strings each event type carries. Events absent
-// here (head.changed, review.submitted) carry free-form values.
-var eventValues = map[forge.EventType][]string{
-	forge.EventStateChanged: {string(forge.StateOpen), string(forge.StateClosed), string(forge.StateMerged)},
-	forge.EventDraftChanged: {"ready", "draft"},
+// valueSets holds the allowed from and to values of one event type.
+type valueSets struct{ from, to []string }
+
+// eventValues lists the Old and New strings forge.Diff emits per event type.
+// A nil set means free-form; an empty non-nil set means the field is always
+// empty. Events absent here (head.changed) are free-form in both fields.
+var eventValues = map[forge.EventType]valueSets{
+	forge.EventStateChanged: {stateValues, stateValues},
+	forge.EventDraftChanged: {draftValues, draftValues},
 	forge.EventChecksStarted: {
-		string(forge.RollupPass), string(forge.RollupFail), string(forge.RollupPending), string(forge.RollupNone),
+		[]string{string(forge.RollupPass), string(forge.RollupFail), string(forge.RollupNone)},
+		[]string{string(forge.RollupPending)},
 	},
 	forge.EventChecksCompleted: {
-		string(forge.RollupPass), string(forge.RollupFail), string(forge.RollupPending), string(forge.RollupNone),
+		[]string{string(forge.RollupPass), string(forge.RollupFail), string(forge.RollupPending), string(forge.RollupNone)},
+		[]string{string(forge.RollupPass), string(forge.RollupFail)},
 	},
-	forge.EventReviewDecisionChanged: {
-		string(forge.ReviewApproved), string(forge.ReviewChangesRequested),
-		string(forge.ReviewRequired), string(forge.ReviewNone),
-	},
-	forge.EventMergeableChanged: {
-		string(forge.MergeableClean), string(forge.MergeableConflict), string(forge.MergeableUnknown),
-	},
+	forge.EventReviewSubmitted:       {from: []string{}},
+	forge.EventReviewDecisionChanged: {reviewDecisionValues, reviewDecisionValues},
+	forge.EventMergeableChanged:      {mergeableValues, mergeableValues},
 }
 
+var (
+	stateValues          = []string{string(forge.StateOpen), string(forge.StateClosed), string(forge.StateMerged)}
+	draftValues          = []string{"ready", "draft"}
+	reviewDecisionValues = []string{
+		string(forge.ReviewApproved), string(forge.ReviewChangesRequested),
+		string(forge.ReviewRequired), string(forge.ReviewNone),
+	}
+	mergeableValues = []string{string(forge.MergeableClean), string(forge.MergeableConflict), string(forge.MergeableUnknown)}
+)
+
 func checkEventValue(on forge.EventType, field, val string) error {
-	allowed, ok := eventValues[on]
-	if val == "" || !ok || slices.Contains(allowed, val) {
+	sets, ok := eventValues[on]
+	allowed := sets.to
+	if field == "from" {
+		allowed = sets.from
+	}
+	if val == "" || !ok || allowed == nil || slices.Contains(allowed, val) {
 		return nil
+	}
+	if len(allowed) == 0 {
+		return fmt.Errorf("%s %q: %s events have no %s value", field, val, on, field)
 	}
 	return fmt.Errorf("%s %q: not a value of %s, want one of %v", field, val, on, allowed)
 }
