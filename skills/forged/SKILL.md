@@ -90,3 +90,31 @@ again on reconnect to find it.
 ```fish
 forged watch -R noamsto/forged --event state.changed,head.changed
 ```
+
+## Reacting to events with hooks
+
+For a recurring chore tied to an event (notify on a failed check, remove the
+worktree of a merged PR), do not build a polling loop or a long-lived watch.
+`forged hooks` runs a local command per matching event, from rules in
+`~/.config/forged/hooks.toml`. The user runs it as a service; your job is to
+propose or edit the config, and to say so if a rule would help.
+
+```toml
+[[rule]]
+name = "cleanup-merged"
+repos = ["noamsto/forged"]
+builtin = "remove-merged-worktree"
+checkout = "~/git/noamsto/forged"
+```
+
+```fish
+forged hooks --config ~/.config/forged/hooks.toml
+```
+
+- Rules match only the viewer's own PRs unless `author = "*"`. `repos` is
+  required.
+- `command` is an argv array, no shell. Put a literal `--` before elements that
+  start with a placeholder (`{branch}`), or the run is refused.
+- Event data is attacker controlled: never splice it into `sh -c` scripts.
+- The builtin keeps dirty, untracked, locked or moved-head worktrees, and never
+  uses `--force`.

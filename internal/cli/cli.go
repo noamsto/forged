@@ -25,6 +25,7 @@ commands:
   invalidate [host/]owner/repo[#N]  refetch a repo's open list or one change now
   watch [-R owner/repo] [--pr N] [--event t1,t2] [--since SEQ]
                                   print change events as JSON lines until interrupted
+  hooks [--config PATH]           run local commands on forge events (subscriber process)
   status                          print daemon version and stats as JSON
   version
   help
@@ -55,6 +56,8 @@ func run(args []string, stdout, stderr io.Writer) int {
 		return invalidate(args[1:], stderr)
 	case "watch":
 		return watch(args[1:], stdout, stderr)
+	case "hooks":
+		return hooksCmd(args[1:], stderr)
 	case "status":
 		return status(stdout, stderr)
 	default:

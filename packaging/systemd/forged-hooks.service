@@ -1,0 +1,12 @@
+[Unit]
+Description=forged hooks runner
+Requires=forged.socket
+After=forged.socket
+
+[Service]
+ExecStart=@out@/bin/forged hooks
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
