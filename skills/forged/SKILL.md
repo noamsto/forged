@@ -1,6 +1,6 @@
 ---
 name: forged
-description: Use when reading pull request state, checks, reviews or mergeability, or waiting for CI or reviews. Serves `gh pr view|list` from a shared local cache and streams change events.
+description: Use when reading pull request state, checks, reviews or mergeability, or waiting for CI or reviews, or when configuring `forged hooks` to run local commands on PR events (e.g. remove a merged PR's worktree). Serves `gh pr view|list` from a shared local cache and streams change events.
 ---
 
 # forged
@@ -90,3 +90,39 @@ again on reconnect to find it.
 ```fish
 forged watch -R noamsto/forged --event state.changed,head.changed
 ```
+
+## Reacting to events with hooks
+
+For a recurring chore tied to an event (notify on a failed check, remove the
+worktree of a merged PR), do not build a polling loop or a long-lived watch.
+`forged hooks` runs a local command per matching event, from rules in
+`~/.config/forged/hooks.toml`. The user runs it as a service; your job is to
+propose or edit the config, and to say so if a rule would help. The service
+already runs `forged hooks`: do not start a second copy. To try a config by hand,
+stop the service first.
+
+```toml
+[[rule]]
+name = "cleanup-merged"
+repos = ["noamsto/forged"]
+builtin = "remove-merged-worktree"
+checkout = "~/git/noamsto/forged"
+```
+
+```fish
+forged hooks --config ~/.config/forged/hooks.toml
+```
+
+- Under Home Manager the config file is generated: edit
+  `services.forged.hooks.settings` instead. Otherwise, after editing run
+  `systemctl --user restart forged-hooks`; the runner reads the config only at
+  startup.
+- Rules match only the viewer's own PRs unless `author = "*"`. `repos` is
+  required.
+- `command` is an argv array, no shell. A run is refused whenever an element
+  beginning with a placeholder expands to a value starting with `-`, checked per
+  event, not at config load. Put a literal `--` before such elements
+  (`{branch}`).
+- Event data is attacker controlled: never splice it into `sh -c` scripts.
+- The builtin keeps dirty, untracked, locked or moved-head worktrees, and never
+  uses `--force`.

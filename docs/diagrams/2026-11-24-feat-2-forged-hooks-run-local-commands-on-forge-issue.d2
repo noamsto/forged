@@ -1,0 +1,16 @@
+direction: right
+
+forge: GitHub
+daemon: "forged serve\n(internal/cache, internal/server)"
+watch: "GET /v1/watch\n(internal/server/watch.go)"
+client: "client.Subscribe\n(client/watch.go)"
+cli: "forged watch\n(internal/cli/watch.go)"
+user: "user script / agent"
+gap: "missing: no way to run a local\ncommand on a forge event" {style.stroke: red; style.font-color: red}
+
+forge -> daemon: poll
+daemon -> watch: ChangeEvent stream
+watch -> client
+client -> cli: JSON lines
+cli -> user: manual piping
+user -> gap: "e.g. remove worktree of merged PR"

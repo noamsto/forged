@@ -43,7 +43,7 @@ func TestUsageListsSubcommands(t *testing.T) {
 	if got := run(nil, &stdout, &stderr); got != 2 {
 		t.Fatalf("exit = %d, want 2", got)
 	}
-	for _, sub := range []string{"serve", "pr", "invalidate", "watch", "status", "version", "help"} {
+	for _, sub := range []string{"serve", "pr", "invalidate", "watch", "hooks", "status", "version", "help"} {
 		if !strings.Contains(stderr.String(), sub) {
 			t.Errorf("usage missing %q: %s", sub, stderr.String())
 		}

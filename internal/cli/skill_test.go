@@ -60,11 +60,19 @@ func TestSkillCommandsMatchCLI(t *testing.T) {
 			} else if _, err := parseKey(args[1]); err != nil {
 				t.Errorf("forged %s: %v", strings.Join(args, " "), err)
 			}
+		case "hooks":
+			fs, _ := newHooksFlagSet(io.Discard)
+			if err := fs.Parse(args[1:]); err != nil {
+				t.Errorf("forged %s: %v", strings.Join(args, " "), err)
+			}
+			if fs.NArg() != 0 {
+				t.Errorf("forged %s: needs flags only", strings.Join(args, " "))
+			}
 		default:
 			t.Errorf("forged %s: command not covered by the skill test", strings.Join(args, " "))
 		}
 	}
-	for _, c := range []string{"pr", "watch", "invalidate"} {
+	for _, c := range []string{"pr", "watch", "invalidate", "hooks"} {
 		if !seen[c] {
 			t.Errorf("SKILL.md has no %s example", c)
 		}

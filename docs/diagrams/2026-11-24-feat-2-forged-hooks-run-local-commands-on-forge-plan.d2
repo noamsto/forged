@@ -1,0 +1,23 @@
+direction: right
+
+forge: GitHub
+daemon: "forged serve\n(read-only cache)"
+client: "client.Subscribe / Change / ByBranch"
+hooks: "forged hooks (NEW)\ninternal/hooks/runner.go" {style.stroke: green}
+cfg: "hooks.toml (NEW)\nrules + filters" {style.stroke: green}
+match: "match.go (NEW)\ntype, repo, author, branch, from/to"
+cmd: "command.go (NEW)\nargv only, FORGED_* env, stdin JSON"
+wt: "worktree.go (NEW)\nbuiltin remove-merged-worktree\nskips dirty / sha mismatch"
+rec: "reconcile (NEW)\nstartup, reconnect, resync"
+unit: "forged-hooks.service + HM option (NEW)"
+
+forge -> daemon: poll
+daemon -> client: events
+client -> hooks
+cfg -> hooks
+hooks -> match
+match -> cmd: matched rule
+match -> wt: builtin rule
+hooks -> rec
+rec -> wt: level-triggered check
+unit -> hooks: runs

@@ -33,7 +33,7 @@
         # The same dependency pin the binary is built with. buildGoModule wires
         # GOPATH/GOMODCACHE to a fetched, read-only module cache, so the
         # static-analysis checks run offline in the Nix sandbox.
-        vendorHash = "sha256-02NsZIVB73+unTdA5OHGvymcj/EXmFhW/3Uyp9v8ijY=";
+        vendorHash = "sha256-n/I8ixoC+uDp0a10FmiOZVZ6NcI5ix1LQ3dwVgrUDqc=";
         version = "0.1.0";
       in {
         packages = {
@@ -47,8 +47,10 @@
             ldflags = ["-s" "-w" "-X github.com/noamsto/forged/internal/cli.version=${version}"];
             postInstall = ''
               install -Dm644 packaging/systemd/forged.socket packaging/systemd/forged.service \
+                packaging/systemd/forged-hooks.service \
                 -t $out/share/systemd/user
-              substituteInPlace $out/share/systemd/user/forged.service --subst-var out
+              substituteInPlace $out/share/systemd/user/forged.service \
+                $out/share/systemd/user/forged-hooks.service --subst-var out
               install -Dm644 skills/forged/SKILL.md \
                 -t $out/share/forged/skills/forged
             '';
